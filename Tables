@@ -1,0 +1,39 @@
+CREATE DATABASE IF NOT EXISTS nome_database;
+USE esg_balance;
+
+CREATE TABLE utente (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50),
+    password VARCHAR(255),
+    cf VARCHAR(16),
+    data_nascita DATE,
+    luogo_nascita VARCHAR(100)
+);
+
+CREATE TABLE email (...);
+
+CREATE TABLE amministratore (...);
+CREATE TABLE revisore_esg (...);
+CREATE TABLE responsabile_aziendale (...);
+
+CREATE TABLE competenza (...);
+CREATE TABLE possiede_competenza (...);
+
+CREATE TABLE azienda (...);
+CREATE TABLE bilancio (...);
+
+CREATE TABLE voce_template (...);
+CREATE TABLE riga_bilancio (...);
+
+CREATE TABLE indicatore_esg (...);
+CREATE TABLE indicatore_ambientale (...);
+CREATE TABLE indicatore_sociale (...);
+
+CREATE TABLE misura_con (...);
+
+CREATE TABLE valuta (...);
+
+CREATE TABLE nota (...);
+CREATE TABLE giudizio (...);
+
+
