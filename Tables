@@ -17,7 +17,10 @@ CREATE TABLE email (
     FOREIGN KEY (utente_id) REFERENCES utente(id)
 );
 
-CREATE TABLE amministratore (...);
+CREATE TABLE amministratore (
+    utente_id INT PRIMARY KEY,
+    FOREIGN KEY (utente_id) REFERENCES utente(id)
+);
 
 CREATE TABLE revisore_esg (
     id INT AUTO_INCREMENT PRIMARY KEY,
