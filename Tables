@@ -67,18 +67,95 @@ CREATE TABLE bilancio (
     FOREIGN KEY (azienda_id) REFERENCES azienda(id)
 );
 
-CREATE TABLE voce_template (...);
-CREATE TABLE riga_bilancio (...);
+CREATE TABLE voce_template (
+    id_voce_template INT AUTO_INCREMENT PRIMARY KEY,
+    nome_voce VARCHAR(100) NOT NULL UNIQUE,
+    descrizione VARCHAR(1000)
+);
 
-CREATE TABLE indicatore_esg (...);
-CREATE TABLE indicatore_ambientale (...);
-CREATE TABLE indicatore_sociale (...);
+CREATE TABLE riga_bilancio (
+    id_riga_bilancio INT AUTO_INCREMENT PRIMARY KEY,
+    valore_voce DECIMAL(15,2) NOT NULL,
+    id_bilancio INT NOT NULL,
 
-CREATE TABLE misura_con (...);
+);
 
-CREATE TABLE valuta (...);
+CREATE TABLE indicatore_esg (
+    id_indicatore INT AUTO_INCREMENT PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL UNIQUE,
+    immagine VARCHAR(255),
+    rilevanza INT NOT NULL,
+    CHECK (rilevanza BETWEEN 0 AND 10)
+);
 
-CREATE TABLE nota (...);
-CREATE TABLE giudizio (...);
+CREATE TABLE indicatore_ambientale (
+    id_indicatore INT PRIMARY KEY,
+    codice_normativa_rilevamento VARCHAR(20) NOT NULL,
+    FOREIGN KEY (id_indicatore) REFERENCES indicatore_esg(id_indicatore)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+CREATE TABLE indicatore_sociale (
+    id_indicatore INT PRIMARY KEY,
+    ambito_sociale VARCHAR(100) NOT NULL,
+    frequenza_di_rilevazione VARCHAR(100) NOT NULL,
+    FOREIGN KEY (id_indicatore) REFERENCES indicatore_esg(id_indicatore)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+CREATE TABLE misura_con (
+    id_riga_bilancio INT NOT NULL,
+    id_indicatore_esg INT NOT NULL,
+    PRIMARY KEY (id_riga_bilancio, id_indicatore),
+    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id_riga_bilancio)
+    FOREIGN KEY (id_indicatore_esg) REFERENCES indicatore_esg(id_indicatore)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+CREATE TABLE valuta (
+    id_revisore INT NOT NULL,
+    id_bilancio INT NOT NULL,
+    PRIMARY KEY (id_revisore, id_bilancio),
+    FOREIGN KEY (id_revisore) REFERENCES revisore_esg(id_utente)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (id_bilancio) REFERENCES bilancio(id_bilancio)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+CREATE TABLE nota (
+    id_nota INT AUTO_INCREMENT PRIMARY KEY,
+    data DATE NOT NULL,
+    testo TEXT NOT NULL,
+    id_revisore INT NOT NULL,
+    id_riga_bilancio INT NOT NULL,
+    FOREIGN KEY (id_revisore) REFERENCES revisore_esg(id_utente)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id_riga_bilancio)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+CREATE TABLE giudizio (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    esito ENUM('approvazione', 'approvazione_con_rilievi', 'respingimento') NOT NULL,
+    data DATE NOT NULL,
+    rilievi TEXT,
+    id_revisore_esg INT NOT NULL,
+    id_bilancio INT NOT NULL,
+    FOREIGN KEY (id_revisore) REFERENCES revisore_esg(id_utente)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE,
+    FOREIGN KEY (id_bilancio) REFERENCES bilancio(id_bilancio)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+
 
 
