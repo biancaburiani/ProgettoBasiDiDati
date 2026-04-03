@@ -1,11 +1,11 @@
-CREATE DATABASE IF NOT EXISTS nome_database;
+CREATE DATABASE IF NOT EXISTS esg_balance;
 USE esg_balance;
 
 CREATE TABLE utente (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50),
-    password VARCHAR(255),
-    cf VARCHAR(16),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    cf VARCHAR(16) UNIQUE NOT NULL,
     data_nascita DATE,
     luogo_nascita VARCHAR(100)
 );
@@ -23,9 +23,10 @@ CREATE TABLE amministratore (
 );
 
 CREATE TABLE revisore_esg (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    utente_id INT PRIMARY KEY,
     indice_affidabilita DECIMAL(5,2),
-    n_revisioni_effettuate INT
+    n_revisioni_effettuate INT,
+    FOREIGN KEY (utente_id) REFERENCES utente(id)
 );
 
 CREATE TABLE responsabile_aziendale (
@@ -51,12 +52,14 @@ CREATE TABLE possiede_competenza (
 CREATE TABLE azienda (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100),
-    regione_sociale VARCHAR(100),
+    ragione_sociale VARCHAR(100) UNIQUE NOT NULL, -- La specifica dice univoca
     settore VARCHAR(100),
-    nr_bilanci INT,
-    luogo VARCHAR(100),
-    piva VARCHAR(20),
-    num_dipendenti INT
+    partita_iva VARCHAR(20) UNIQUE,
+    num_dipendenti INT,
+    logo_path VARCHAR(255),
+    nr_bilanci INT DEFAULT 0, -- Ridondanza richiesta
+    id_responsabile INT NOT NULL,
+    FOREIGN KEY (id_responsabile) REFERENCES responsabile_aziendale(utente_id)
 );
 
 CREATE TABLE bilancio (
@@ -75,9 +78,12 @@ CREATE TABLE voce_template (
 
 CREATE TABLE riga_bilancio (
     id_riga_bilancio INT AUTO_INCREMENT PRIMARY KEY,
-    valore_voce DECIMAL(15,2) NOT NULL,
     id_bilancio INT NOT NULL,
-
+    id_voce_template INT NOT NULL,
+    valore_numerico DECIMAL(15,2) NOT NULL,
+    FOREIGN KEY (id_bilancio) REFERENCES bilancio(id),
+    FOREIGN KEY (id_voce_template) REFERENCES voce_template(id_voce_template),
+    UNIQUE(id_bilancio, id_voce_template) -- Impedisce di avere due volte la stessa voce nello stesso bilancio
 );
 
 CREATE TABLE indicatore_esg (
@@ -108,11 +114,12 @@ CREATE TABLE indicatore_sociale (
 CREATE TABLE misura_con (
     id_riga_bilancio INT NOT NULL,
     id_indicatore_esg INT NOT NULL,
-    PRIMARY KEY (id_riga_bilancio, id_indicatore),
-    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id_riga_bilancio)
+    valore_indicatore DECIMAL(15,2),
+    fonte VARCHAR(255),
+    data_rilevazione DATE,
+    PRIMARY KEY (id_riga_bilancio, id_indicatore_esg),
+    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id_riga_bilancio),
     FOREIGN KEY (id_indicatore_esg) REFERENCES indicatore_esg(id_indicatore)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE
 );
 
 CREATE TABLE valuta (
