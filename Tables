@@ -10,7 +10,12 @@ CREATE TABLE utente (
     luogo_nascita VARCHAR(100)
 );
 
-CREATE TABLE email (...);
+CREATE TABLE email (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    indirizzo VARCHAR(100),
+    utente_id INT NOT NULL,
+    FOREIGN KEY (utente_id) REFERENCES utente(id)
+);
 
 CREATE TABLE amministratore (...);
 CREATE TABLE revisore_esg (...);
