@@ -1,24 +1,26 @@
 CREATE DATABASE IF NOT EXISTS esg_balance;
 USE esg_balance;
 
--- 1. UTENTE (Base per la gerarchia)
+-- --- UTENTI E RECAPITI ---
 CREATE TABLE utente (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    cf VARCHAR(16) UNIQUE NOT NULL,
+    cf CHAR(16) UNIQUE NOT NULL,
     data_nascita DATE,
-    luogo_nascita VARCHAR(100)
+    luogo_nascita VARCHAR(100),
+    ruolo ENUM('amministratore', 'revisore', 'responsabile') NOT NULL
 );
 
 CREATE TABLE email (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    indirizzo VARCHAR(100),
+    indirizzo VARCHAR(100) NOT NULL,
     utente_id INT NOT NULL,
+    UNIQUE (indirizzo, utente_id),
     FOREIGN KEY (utente_id) REFERENCES utente(id) ON DELETE CASCADE
 );
 
--- 2. SOTTOCLASSI UTENTE
+-- --- SPECIALIZZAZIONI UTENTE ---
 CREATE TABLE amministratore (
     utente_id INT PRIMARY KEY,
     FOREIGN KEY (utente_id) REFERENCES utente(id) ON DELETE CASCADE
@@ -26,42 +28,42 @@ CREATE TABLE amministratore (
 
 CREATE TABLE revisore_esg (
     utente_id INT PRIMARY KEY,
+    n_revisioni_effettuate INT DEFAULT 0 CHECK (n_revisioni_effettuate >= 0),
     indice_affidabilita DECIMAL(5,2),
-    n_revisioni_effettuate INT DEFAULT 0,
     FOREIGN KEY (utente_id) REFERENCES utente(id) ON DELETE CASCADE
 );
 
 CREATE TABLE responsabile_aziendale (
     utente_id INT PRIMARY KEY,
-    curriculum_path TEXT, -- Salviamo il percorso del PDF
+    curriculum_vitae VARCHAR(255), -- Percorso al file PDF
     FOREIGN KEY (utente_id) REFERENCES utente(id) ON DELETE CASCADE
 );
 
--- 3. COMPETENZE REVISORI
+-- --- COMPETENZE REVISORI ---
 CREATE TABLE competenza (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    nome VARCHAR(100) UNIQUE NOT NULL
+    nome VARCHAR(100) UNIQUE NOT NULL -- es. "Risk Assessment"
 );
 
 CREATE TABLE possiede_competenza (
     revisore_id INT,
     competenza_id INT,
-    livello TINYINT NOT NULL CHECK (livello BETWEEN 0 AND 5), -- Specificato tra 0 e 5
+    livello TINYINT CHECK (livello BETWEEN 0 AND 5),
     PRIMARY KEY (revisore_id, competenza_id),
     FOREIGN KEY (revisore_id) REFERENCES revisore_esg(utente_id) ON DELETE CASCADE,
     FOREIGN KEY (competenza_id) REFERENCES competenza(id) ON DELETE CASCADE
 );
 
--- 4. AZIENDA E BILANCIO
+-- --- AZIENDA E BILANCIO ---
 CREATE TABLE azienda (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100),
     ragione_sociale VARCHAR(100) UNIQUE NOT NULL,
+    partita_iva VARCHAR(20) UNIQUE NOT NULL,
     settore VARCHAR(100),
-    partita_iva VARCHAR(20) UNIQUE,
-    num_dipendenti INT,
-    logo_path VARCHAR(255),
-    nr_bilanci INT DEFAULT 0, -- Ridondanza concettuale richiesta
+    num_dipendenti INT CHECK (num_dipendenti >= 0),
+    logo VARCHAR(255), -- Percorso immagine
+    nr_bilanci INT DEFAULT 0 CHECK (nr_bilanci >= 0), -- Ridondanza richiesta
     id_responsabile INT NOT NULL,
     FOREIGN KEY (id_responsabile) REFERENCES responsabile_aziendale(utente_id)
 );
@@ -74,75 +76,83 @@ CREATE TABLE bilancio (
     FOREIGN KEY (azienda_id) REFERENCES azienda(id) ON DELETE CASCADE
 );
 
--- 5. TEMPLATE E VOCI
+-- --- TEMPLATE E RIGHE ---
 CREATE TABLE voce_template (
-    id_voce_template INT AUTO_INCREMENT PRIMARY KEY,
-    nome_voce VARCHAR(100) NOT NULL UNIQUE,
-    descrizione VARCHAR(1000)
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nome_voce VARCHAR(100) UNIQUE NOT NULL, -- es. "Ricavi vendite"
+    descrizione TEXT
 );
 
 CREATE TABLE riga_bilancio (
-    id_riga_bilancio INT AUTO_INCREMENT PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    valore_numerico DECIMAL(15,2) NOT NULL,
     id_bilancio INT NOT NULL,
     id_voce_template INT NOT NULL,
-    valore_numerico DECIMAL(15,2) NOT NULL,
     FOREIGN KEY (id_bilancio) REFERENCES bilancio(id) ON DELETE CASCADE,
-    FOREIGN KEY (id_voce_template) REFERENCES voce_template(id_voce_template),
+    FOREIGN KEY (id_voce_template) REFERENCES voce_template(id),
     UNIQUE(id_bilancio, id_voce_template)
 );
 
--- 6. INDICATORI ESG
+-- --- INDICATORI ESG ---
 CREATE TABLE indicatore_esg (
-    id_indicatore INT AUTO_INCREMENT PRIMARY KEY,
-    nome VARCHAR(100) NOT NULL UNIQUE,
-    immagine_path VARCHAR(255),
-    rilevanza INT NOT NULL CHECK (rilevanza BETWEEN 0 AND 10)
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nome VARCHAR(100) UNIQUE NOT NULL,
+    immagine VARCHAR(255),
+    rilevanza INT CHECK (rilevanza BETWEEN 0 AND 10)
 );
 
 CREATE TABLE indicatore_ambientale (
     id_indicatore INT PRIMARY KEY,
-    codice_normativa_rilevamento VARCHAR(50) NOT NULL,
-    FOREIGN KEY (id_indicatore) REFERENCES indicatore_esg(id_indicatore) ON DELETE CASCADE
+    codice_normativa VARCHAR(50),
+    FOREIGN KEY (id_indicatore) REFERENCES indicatore_esg(id) ON DELETE CASCADE
 );
 
 CREATE TABLE indicatore_sociale (
     id_indicatore INT PRIMARY KEY,
-    ambito_sociale VARCHAR(100) NOT NULL,
-    frequenza_di_rilevazione VARCHAR(100) NOT NULL,
-    FOREIGN KEY (id_indicatore) REFERENCES indicatore_esg(id_indicatore) ON DELETE CASCADE
+    ambito_sociale VARCHAR(100),
+    frequenza_rilevazione VARCHAR(50),
+    FOREIGN KEY (id_indicatore) REFERENCES indicatore_esg(id) ON DELETE CASCADE
 );
 
--- 7. RELAZIONI TRA VOCI E INDICATORI
+-- --- RELAZIONE VOCE-INDICATORE ---
 CREATE TABLE misura_con (
-    id_riga_bilancio INT NOT NULL,
-    id_indicatore_esg INT NOT NULL,
+    id_riga_bilancio INT,
+    id_indicatore_esg INT,
     valore_indicatore DECIMAL(15,2),
     fonte VARCHAR(255),
     data_rilevazione DATE,
     PRIMARY KEY (id_riga_bilancio, id_indicatore_esg),
-    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id_riga_bilancio) ON DELETE CASCADE,
-    FOREIGN KEY (id_indicatore_esg) REFERENCES indicatore_esg(id_indicatore) ON DELETE CASCADE
+    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_indicatore_esg) REFERENCES indicatore_esg(id) ON DELETE CASCADE
 );
 
--- 8. REVISIONE E GIUDIZIO
-CREATE TABLE giudizio (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    esito ENUM('approvazione', 'approvazione_con_rilievi', 'respingimento') NOT NULL,
-    data DATE NOT NULL,
-    rilievi TEXT,
-    id_revisore INT NOT NULL,
-    id_bilancio INT NOT NULL,
+-- --- PROCESSO DI REVISIONE ---
+CREATE TABLE valuta (
+    id_revisore INT,
+    id_bilancio INT,
+    PRIMARY KEY (id_revisore, id_bilancio),
     FOREIGN KEY (id_revisore) REFERENCES revisore_esg(utente_id) ON DELETE CASCADE,
-    FOREIGN KEY (id_bilancio) REFERENCES bilancio(id) ON DELETE CASCADE,
-    UNIQUE(id_revisore, id_bilancio) -- Un revisore dà un solo giudizio per bilancio
+    FOREIGN KEY (id_bilancio) REFERENCES bilancio(id) ON DELETE CASCADE
 );
 
 CREATE TABLE nota (
-    id_nota INT AUTO_INCREMENT PRIMARY KEY,
-    data DATE NOT NULL,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     testo TEXT NOT NULL,
+    data DATE DEFAULT (CURRENT_DATE),
     id_revisore INT NOT NULL,
     id_riga_bilancio INT NOT NULL,
-    FOREIGN KEY (id_revisore) REFERENCES revisore_esg(utente_id) ON DELETE CASCADE,
-    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id_riga_bilancio) ON DELETE CASCADE
+    FOREIGN KEY (id_revisore) REFERENCES revisore_esg(utente_id),
+    FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id) ON DELETE CASCADE
+);
+
+CREATE TABLE giudizio (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    esito ENUM('approvazione', 'approvazione_con_rilievi', 'respingimento') NOT NULL,
+    data DATE DEFAULT (CURRENT_DATE),
+    rilievi TEXT,
+    id_revisore INT NOT NULL,
+    id_bilancio INT NOT NULL,
+    UNIQUE (id_revisore, id_bilancio),
+    FOREIGN KEY (id_revisore) REFERENCES revisore_esg(utente_id),
+    FOREIGN KEY (id_bilancio) REFERENCES bilancio(id) ON DELETE CASCADE
 );
