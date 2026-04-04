@@ -9,7 +9,13 @@ CREATE TABLE utente (
     cf CHAR(16) UNIQUE NOT NULL,
     data_nascita DATE,
     luogo_nascita VARCHAR(100),
-    ruolo ENUM('amministratore', 'revisore', 'responsabile') NOT NULL
+    ruolo ENUM('amministratore', 'revisore', 'responsabile') NOT NULL,
+    
+    -- Vincolo di complessità password (MySQL 8.0.16+)
+    CONSTRAINT chk_password_regole CHECK (
+        CHAR_LENGTH(password) >= 8 AND 
+        password REGEXP '[^a-zA-Z0-9]'
+    )
 );
 
 CREATE TABLE email (
