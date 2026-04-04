@@ -1,3 +1,4 @@
+-- REGISTRAZIONE UTENTE STORED PROCEDURE --
 DELIMITER //
 
 CREATE PROCEDURE registra_utente(
@@ -60,6 +61,52 @@ BEGIN
     END CASE;
 
     -- Nota: In un'applicazione reale, qui verrebbe generato l'evento per MongoDB [cite: 35]
+END //
+
+DELIMITER ;
+
+-- LOGIN UTENTE STORED PROCEDURE --
+DELIMITER //
+
+CREATE PROCEDURE login_utente(
+    IN p_username VARCHAR(50),
+    IN p_password VARCHAR(255)
+)
+BEGIN
+    -- Seleziona i dati dell'utente se username e password corrispondono 
+    SELECT id, username, ruolo
+    FROM utente
+    WHERE username = p_username AND password = p_password;
+    
+    -- Se la query non restituisce righe, l'autenticazione è fallita.
+    -- LOG EVENTO su MongoDB: "Tentativo di login per utente: p_username" [cite: 35]
+END //
+
+DELIMITER ;
+
+-- AGGIUNGI EMAIL STORED PROCEDURE --
+DELIMITER //
+
+CREATE PROCEDURE aggiungi_email(
+    IN p_utente_id INT,
+    IN p_nuovo_indirizzo VARCHAR(100)
+)
+BEGIN
+    -- 1. Verifica se l'indirizzo email è già registrato da chiunque
+    IF EXISTS (SELECT 1 FROM email WHERE indirizzo = p_nuovo_indirizzo) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Questo indirizzo email è già associato a un account.';
+    
+    -- 2. Verifica se l'utente esiste
+    ELSEIF NOT EXISTS (SELECT 1 FROM utente WHERE id = p_utente_id) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Utente non trovato.';
+        
+    ELSE
+        -- 3. Inserimento sicuro
+        INSERT INTO email (indirizzo, utente_id)
+        VALUES (p_nuovo_indirizzo, p_utente_id);
+    END IF;
 END //
 
 DELIMITER ;
