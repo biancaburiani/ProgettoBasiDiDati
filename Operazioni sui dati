@@ -1,0 +1,65 @@
+DELIMITER //
+
+CREATE PROCEDURE registra_utente(
+    IN p_username VARCHAR(50),
+    IN p_password VARCHAR(255),
+    IN p_cf CHAR(16),
+    IN p_data_nascita DATE,
+    IN p_luogo_nascita VARCHAR(100),
+    IN p_ruolo ENUM('amministratore', 'revisore', 'responsabile'),
+    IN p_email_principale VARCHAR(100),
+    IN p_cv_path VARCHAR(255) -- Usato solo se il ruolo è 'responsabile'
+)
+BEGIN
+    DECLARE v_utente_id INT;
+
+    -- 1. VALIDAZIONE PASSWORD
+    -- Controllo lunghezza minima (8 caratteri)
+    IF CHAR_LENGTH(p_password) < 8 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: La password deve contenere almeno 8 caratteri.';
+    END IF;
+
+    -- Controllo carattere speciale (almeno uno non alfanumerico)
+    IF p_password NOT REGEXP '[^a-zA-Z0-9]' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: La password deve contenere almeno un carattere speciale.';
+    END IF;
+
+    -- 2. VALIDAZIONE EMAIL (Univocità globale)
+    IF EXISTS (SELECT 1 FROM email WHERE indirizzo = p_email_principale) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Questo indirizzo email è già associato a un altro utente.';
+    END IF;
+
+    -- 3. INSERIMENTO NELLA TABELLA PADRE 'utente' 
+    INSERT INTO utente (username, password, cf, data_nascita, luogo_nascita, ruolo)
+    VALUES (p_username, p_password, p_cf, p_data_nascita, p_luogo_nascita, p_ruolo);
+    
+    SET v_utente_id = LAST_INSERT_ID();
+
+    -- 4. INSERIMENTO RECAPITO EMAIL 
+    INSERT INTO email (indirizzo, utente_id)
+    VALUES (p_email_principale, v_utente_id);
+
+    -- 5. INSERIMENTO NELLA SOTTOCLASSE SPECIFICA 
+    CASE p_ruolo
+        WHEN 'amministratore' THEN
+            INSERT INTO amministratore (utente_id) 
+            VALUES (v_utente_id);
+            
+        WHEN 'revisore' THEN
+            -- Inizializzazione revisore con 0 revisioni e affidabilità base [cite: 9]
+            INSERT INTO revisore_esg (utente_id, n_revisioni_effettuate, indice_affidabilita) 
+            VALUES (v_utente_id, 0, 0.0);
+            
+        WHEN 'responsabile' THEN
+            -- Inserimento responsabile con percorso al file CV [cite: 12]
+            INSERT INTO responsabile_aziendale (utente_id, curriculum_vitae) 
+            VALUES (v_utente_id, p_cv_path);
+    END CASE;
+
+    -- Nota: In un'applicazione reale, qui verrebbe generato l'evento per MongoDB [cite: 35]
+END //
+
+DELIMITER ;
