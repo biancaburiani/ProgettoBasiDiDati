@@ -1,4 +1,6 @@
 --------------------------------------------------------------------------------------- REGISTRAZIONE UTENTE STORED PROCEDURE --------------------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS registra_utente;
+
 DELIMITER //
 
 CREATE PROCEDURE registra_utente(
@@ -11,6 +13,7 @@ CREATE PROCEDURE registra_utente(
     IN p_email_principale VARCHAR(100),
     IN p_cv_path VARCHAR(255) -- Usato solo se il ruolo è 'responsabile'
 )
+
 BEGIN
     DECLARE v_utente_id INT;
 
@@ -50,28 +53,31 @@ BEGIN
             VALUES (v_utente_id);
             
         WHEN 'revisore' THEN
-            -- Inizializzazione revisore con 0 revisioni e affidabilità base [cite: 9]
+            -- Inizializzazione revisore con 0 revisioni e affidabilità base 
             INSERT INTO revisore_esg (utente_id, n_revisioni_effettuate, indice_affidabilita) 
             VALUES (v_utente_id, 0, 0.0);
             
         WHEN 'responsabile' THEN
-            -- Inserimento responsabile con percorso al file CV [cite: 12]
+            -- Inserimento responsabile con percorso al file CV 
             INSERT INTO responsabile_aziendale (utente_id, curriculum_vitae) 
             VALUES (v_utente_id, p_cv_path);
     END CASE;
 
-    -- Nota: In un'applicazione reale, qui verrebbe generato l'evento per MongoDB [cite: 35]
+    -- Nota: In un'applicazione reale, qui verrebbe generato l'evento per MongoDB
 END //
 
 DELIMITER ;
 
 ----------------------------------------------------------------------------------------- LOGIN UTENTE STORED PROCEDURE -----------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS login_utente;
+
 DELIMITER //
 
 CREATE PROCEDURE login_utente(
     IN p_username VARCHAR(50),
     IN p_password VARCHAR(255)
 )
+
 BEGIN
     -- Seleziona i dati dell'utente se username e password corrispondono 
     SELECT id, username, ruolo
@@ -79,7 +85,7 @@ BEGIN
     WHERE username = p_username AND password = p_password;
     
     -- Se la query non restituisce righe, l'autenticazione è fallita.
-    -- LOG EVENTO su MongoDB: "Tentativo di login per utente: p_username" [cite: 35]
+    -- LOG EVENTO su MongoDB: "Tentativo di login per utente: p_username" 
 END //
 
 DELIMITER ;
@@ -88,6 +94,7 @@ DELIMITER ;
 DELIMITER //
 
 ----------------------------------------------------------------------------------- STORED PROCEDURE aggiungi_email ---------------------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS aggiungi_email;
 
 DELIMITER //
 
@@ -95,6 +102,7 @@ CREATE PROCEDURE aggiungi_email(
     IN p_utente_id INT,
     IN p_nuovo_indirizzo VARCHAR(100)
 )
+
 BEGIN
     -- 1. Verifica se l'indirizzo email è già registrato da chiunque
     IF EXISTS (SELECT 1 FROM email WHERE indirizzo = p_nuovo_indirizzo) THEN
@@ -116,6 +124,7 @@ END //
 DELIMITER ;
 
 ------------------------------------------------------------------------------ stored procedure inserimento_indicatore_esg ----------------------------------------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS inserisci_indicatore_esg;
 
 DELIMITER //
 
@@ -134,18 +143,18 @@ CREATE PROCEDURE inserisci_indicatore_esg(
 BEGIN
     DECLARE v_indicatore_id INT;
 
-    -- Controllo se l'utente è un amministratore [cite: 28, 39]
+    -- Controllo se l'utente è un amministratore 
     IF NOT EXISTS (SELECT 1 FROM amministratore WHERE utente_id = p_admin_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo gli amministratori possono eseguire questa operazione.';
     END IF;
 
-    -- Inserimento indicatore base [cite: 23]
+    -- Inserimento indicatore base 
     INSERT INTO indicatore_esg (nome, immagine, rilevanza)
     VALUES (p_nome, p_immagine, p_rilevanza);
     
     SET v_indicatore_id = LAST_INSERT_ID();
 
-    -- Specializzazione [cite: 25, 26, 27]
+    -- Specializzazione 
     IF p_tipo = 'ambientale' THEN
         INSERT INTO indicatore_ambientale (id_indicatore, codice_normativa) 
         VALUES (v_indicatore_id, p_codice_normativa);
@@ -158,6 +167,7 @@ END //
 DELIMITER ;
 
 -----------------------------------------------------------------------------------  stored procedure crea_voce_template -------------------------------------------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS crea_voce_template;
 
 DELIMITER //
 
@@ -179,6 +189,7 @@ END //
 DELIMITER ;
 
 -------------------------------------------------------------------------------------- stored procedure assegna_revisore_a_bilancio -------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS assegna_revisore_a_bilancio;
 
 DELIMITER //
 
@@ -188,18 +199,18 @@ CREATE PROCEDURE assegna_revisore_a_bilancio(
     IN p_bilancio_id INT
 )
 BEGIN
-    -- 1. Controllo permessi amministratore [cite: 40]
+    -- 1. Controllo permessi amministratore 
     IF NOT EXISTS (SELECT 1 FROM amministratore WHERE utente_id = p_admin_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Operazione riservata agli amministratori.';
     END IF;
 
-    -- 2. Verifica che il revisore esista effettivamente [cite: 8, 9]
+    -- 2. Verifica che il revisore esista effettivamente 
     IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: L\'utente selezionato non è un revisore ESG.';
     END IF;
 
-    -- 3. Inserimento dell'associazione [cite: 32]
-    -- NOTA: Questo inserimento attiverà il trigger per cambiare lo stato in 'in revisione' [cite: 59]
+    -- 3. Inserimento dell'associazione 
+    -- NOTA: Questo inserimento attiverà il trigger per cambiare lo stato in 'in revisione' 
     INSERT INTO valuta (id_revisore, id_bilancio)
     VALUES (p_revisore_id, p_bilancio_id);
 END //
