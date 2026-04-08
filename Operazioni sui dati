@@ -347,3 +347,118 @@ BEGIN
 END //
 
 DELIMITER ;
+
+---------------------------------------------------------------------------------------
+-- STORED PROCEDURE registra_azienda
+---------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS registra_azienda;
+
+DELIMITER //
+
+-- in TABLE azienda mettere NOME NOT NULL 
+
+CREATE PROCEDURE registra_azienda(
+    IN p_responsabile_id INT,
+    IN p_nome VARCHAR(100),
+    IN p_ragione_sociale VARCHAR(100),
+    IN p_partita_iva VARCHAR(20),
+    IN p_settore VARCHAR(100),
+    IN p_num_dipendenti INT,
+    IN p_logo VARCHAR(255)
+)
+BEGIN
+    -- Verifica che l'utente sia un responsabile aziendale 
+    IF NOT EXISTS (SELECT 1 FROM responsabile_aziendale WHERE utente_id = p_responsabile_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo un responsabile aziendale può registrare aziende.';
+    END IF;
+
+    INSERT INTO azienda (nome, ragione_sociale, partita_iva, settore, num_dipendenti, logo, id_responsabile, nr_bilanci)
+    VALUES (p_nome, p_ragione_sociale, p_partita_iva, p_settore, p_num_dipendenti, p_logo, p_responsabile_id, 0);
+END //
+
+DELIMITER ;
+
+
+-- eventuale controllo
+IF p_nome IS NULL OR TRIM(p_nome) = '' THEN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Errore: il nome dell''azienda non può essere vuoto.';
+END IF;
+
+---------------------------------------------------------------------------------------
+-- STORED PROCEDURE crea_e_popola_bilancio
+---------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS crea_e_popola_bilancio;
+
+DELIMITER //
+
+CREATE PROCEDURE crea_e_popola_bilancio(
+    IN p_responsabile_id INT,
+    IN p_azienda_id INT,
+    OUT p_nuovo_bilancio_id INT
+)
+BEGIN
+    -- 1. Verifica che l'azienda appartenga al responsabile 
+    IF NOT EXISTS (SELECT 1 FROM azienda WHERE id = p_azienda_id AND id_responsabile = p_responsabile_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Azienda non trovata o non associata a questo responsabile.';
+    END IF;
+
+    -- 2. Creazione della testata del bilancio (stato di default 'bozza') 
+
+    INSERT INTO bilancio (data_creazione, stato, azienda_id)
+    VALUES (CURRENT_DATE, 'bozza', p_azienda_id);
+    
+    SET p_nuovo_bilancio_id = LAST_INSERT_ID();
+
+    -- 3. Popolamento automatico delle righe usando il template 
+    -- Inizializziamo i valori numerici a 0.00
+    INSERT INTO riga_bilancio (valore_numerico, id_bilancio, id_voce_template)
+    SELECT 0.00, p_nuovo_bilancio_id, id FROM voce_template;
+
+    -- Nota: L'incremento di azienda.nr_bilanci  è ideale gestirlo via TRIGGER 
+    -- per tracciare anche eventuali cancellazioni.
+END //
+
+DELIMITER ;
+
+---------------------------------------------------------------------------------------
+-- STORED PROCEDURE inserisci_valore_esg_voce
+---------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS inserisci_valore_esg_voce;
+
+DELIMITER //
+
+CREATE PROCEDURE inserisci_valore_esg_voce(
+    IN p_responsabile_id INT,
+    IN p_riga_bilancio_id INT,
+    IN p_indicatore_id INT,
+    IN p_valore_esg DECIMAL(15,2),
+    IN p_fonte VARCHAR(255)
+)
+BEGIN
+    -- 1. Verifica permessi: il responsabile deve possedere l'azienda di quel bilancio
+    IF NOT EXISTS (
+        SELECT 1 FROM riga_bilancio rb
+        JOIN bilancio b ON rb.id_bilancio = b.id
+        JOIN azienda a ON b.azienda_id = a.id
+        WHERE rb.id = p_riga_bilancio_id AND a.id_responsabile = p_responsabile_id
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Non autorizzato a modificare questo bilancio.';
+    END IF;
+
+    -- 2. Verifica che la fonte non sia nulla o vuota
+    IF p_fonte IS NULL OR TRIM(p_fonte) = '' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: La fonte deve essere specificata.';
+    END IF;
+
+    -- 3. Inserimento o aggiornamento del valore dell'indicatore
+    INSERT INTO misura_con (id_riga_bilancio, id_indicatore_esg, valore_indicatore, fonte, data_rilevazione)
+    VALUES (p_riga_bilancio_id, p_indicatore_id, p_valore_esg, p_fonte, CURRENT_DATE)
+    ON DUPLICATE KEY UPDATE 
+        valore_indicatore = p_valore_esg, 
+        fonte = p_fonte, 
+        data_rilevazione = CURRENT_DATE;
+END //
+
+DELIMITER ;
