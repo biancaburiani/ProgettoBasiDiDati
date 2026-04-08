@@ -1,7 +1,9 @@
-CREATE DATABASE IF NOT EXISTS esg_balance;
+DROP DATABASE IF EXISTS esg_balance;
+CREATE DATABASE esg_balance;
 USE esg_balance;
 
 -- --- UTENTI E RECAPITI ---
+DROP TABLE IF EXISTS utente;
 CREATE TABLE utente (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
@@ -18,6 +20,7 @@ CREATE TABLE utente (
     )
 );
 
+DROP TABLE IF EXISTS email;
 CREATE TABLE email (
     id INT AUTO_INCREMENT PRIMARY KEY,
     indirizzo VARCHAR(100) UNIQUE NOT NULL,
@@ -26,11 +29,13 @@ CREATE TABLE email (
 );
 
 -- --- SPECIALIZZAZIONI UTENTE ---
+DROP TABLE IF EXISTS amministratore;
 CREATE TABLE amministratore (
     utente_id INT PRIMARY KEY,
     FOREIGN KEY (utente_id) REFERENCES utente(id) ON DELETE CASCADE
 );
 
+DROP TABLE IF EXISTS revisore_esg;
 CREATE TABLE revisore_esg (
     utente_id INT PRIMARY KEY,
     n_revisioni_effettuate INT DEFAULT 0 CHECK (n_revisioni_effettuate >= 0),
@@ -38,6 +43,7 @@ CREATE TABLE revisore_esg (
     FOREIGN KEY (utente_id) REFERENCES utente(id) ON DELETE CASCADE
 );
 
+DROP TABLE IF EXISTS responsabile_aziendale;
 CREATE TABLE responsabile_aziendale (
     utente_id INT PRIMARY KEY,
     curriculum_vitae VARCHAR(255), -- Percorso al file PDF
@@ -45,11 +51,13 @@ CREATE TABLE responsabile_aziendale (
 );
 
 -- --- COMPETENZE REVISORI ---
+DROP TABLE IF EXISTS competenza;
 CREATE TABLE competenza (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100) UNIQUE NOT NULL -- es. "Risk Assessment"
 );
 
+DROP TABLE IF EXISTS possiede_competenza;
 CREATE TABLE possiede_competenza (
     revisore_id INT,
     competenza_id INT,
@@ -60,6 +68,7 @@ CREATE TABLE possiede_competenza (
 );
 
 -- --- AZIENDA E BILANCIO ---
+DROP TABLE IF EXISTS azienda;
 CREATE TABLE azienda (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100),
@@ -73,6 +82,7 @@ CREATE TABLE azienda (
     FOREIGN KEY (id_responsabile) REFERENCES responsabile_aziendale(utente_id)
 );
 
+DROP TABLE IF EXISTS bilancio;
 CREATE TABLE bilancio (
     id INT AUTO_INCREMENT PRIMARY KEY,
     data_creazione DATE DEFAULT (CURRENT_DATE),
@@ -82,12 +92,14 @@ CREATE TABLE bilancio (
 );
 
 -- --- TEMPLATE E RIGHE ---
+DROP TABLE IF EXISTS voce_template;
 CREATE TABLE voce_template (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome_voce VARCHAR(100) UNIQUE NOT NULL, -- es. "Ricavi vendite"
     descrizione TEXT
 );
 
+DROP TABLE IF EXISTS riga_bilancio;
 CREATE TABLE riga_bilancio (
     id INT AUTO_INCREMENT PRIMARY KEY,
     valore_numerico DECIMAL(15,2) NOT NULL,
@@ -99,6 +111,7 @@ CREATE TABLE riga_bilancio (
 );
 
 -- --- INDICATORI ESG ---
+DROP TABLE IF EXISTS indicatore_esg;
 CREATE TABLE indicatore_esg (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100) UNIQUE NOT NULL,
@@ -106,12 +119,14 @@ CREATE TABLE indicatore_esg (
     rilevanza INT CHECK (rilevanza BETWEEN 0 AND 10)
 );
 
+DROP TABLE IF EXISTS indicatore_ambientale;
 CREATE TABLE indicatore_ambientale (
     id_indicatore INT PRIMARY KEY,
     codice_normativa VARCHAR(50),
     FOREIGN KEY (id_indicatore) REFERENCES indicatore_esg(id) ON DELETE CASCADE
 );
 
+DROP TABLE IF EXISTS indicatore_sociale;
 CREATE TABLE indicatore_sociale (
     id_indicatore INT PRIMARY KEY,
     ambito_sociale VARCHAR(100),
@@ -120,6 +135,7 @@ CREATE TABLE indicatore_sociale (
 );
 
 -- --- RELAZIONE VOCE-INDICATORE ---
+DROP TABLE IF EXISTS misura_con;
 CREATE TABLE misura_con (
     id_riga_bilancio INT,
     id_indicatore_esg INT,
@@ -132,6 +148,7 @@ CREATE TABLE misura_con (
 );
 
 -- --- PROCESSO DI REVISIONE ---
+DROP TABLE IF EXISTS valuta;
 CREATE TABLE valuta (
     id_revisore INT,
     id_bilancio INT,
@@ -140,6 +157,7 @@ CREATE TABLE valuta (
     FOREIGN KEY (id_bilancio) REFERENCES bilancio(id) ON DELETE CASCADE
 );
 
+DROP TABLE IF EXISTS note;
 CREATE TABLE nota (
     id INT AUTO_INCREMENT PRIMARY KEY,
     testo TEXT NOT NULL,
@@ -150,6 +168,7 @@ CREATE TABLE nota (
     FOREIGN KEY (id_riga_bilancio) REFERENCES riga_bilancio(id) ON DELETE CASCADE
 );
 
+DROP TABLE IF EXISTS giudizio;
 CREATE TABLE giudizio (
     id INT AUTO_INCREMENT PRIMARY KEY,
     esito ENUM('approvazione', 'approvazione_con_rilievi', 'respingimento') NOT NULL,
