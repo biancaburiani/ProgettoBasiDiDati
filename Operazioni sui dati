@@ -128,6 +128,11 @@ DROP PROCEDURE IF EXISTS inserisci_indicatore_esg;
 
 DELIMITER //
 
+-- se p_tipo = ambientale, bisogna valorizzare p_codice_normativa
+-- se p_tipo = sociale, bisogna valorizzare p_ambito_sociale e p_frequenza
+-- manca controllo esplicito per p_rivelanza tra 0 e 10 (probabilmente fatto)
+-- vincolo NOME UNIVOCO deve esserci a livello di schema (probabilmente fatto)
+
 CREATE PROCEDURE inserisci_indicatore_esg(
     IN p_admin_id INT,
     IN p_nome VARCHAR(100),
@@ -217,3 +222,128 @@ END //
 
 DELIMITER ;
 
+---------------------------------------------------------------------------------------
+-- STORED PROCEDURE aggiungi_competenza_revisore
+---------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS aggiungi_competenza_revisore;
+
+DELIMITER //
+
+-- aggiungere IF p_livello NOT BETWEEN 0 AND 5 THEN SIGNAL ...
+
+CREATE PROCEDURE aggiungi_competenza_revisore(
+    IN p_revisore_id INT,
+    IN p_nome_competenza VARCHAR(100),
+    IN p_livello TINYINT
+)
+BEGIN
+    DECLARE v_competenza_id INT;
+
+    -- 1. Controllo se l'utente è un revisore ESG
+    IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo i revisori ESG possono inserire competenze.';
+    END IF;
+
+    -- 2. Recupero o creazione della competenza nella tabella 'competenza' 
+    SELECT id INTO v_competenza_id FROM competenza WHERE nome = p_nome_competenza;
+    
+    IF v_competenza_id IS NULL THEN
+        INSERT INTO competenza (nome) VALUES (p_nome_competenza);
+        SET v_competenza_id = LAST_INSERT_ID();
+    END IF;
+
+    -- 3. Inserimento o aggiornamento del livello di possesso 
+    INSERT INTO possiede_competenza (revisore_id, competenza_id, livello)
+    VALUES (p_revisore_id, v_competenza_id, p_livello)
+    ON DUPLICATE KEY UPDATE livello = p_livello;
+END //
+
+DELIMITER ;
+
+---------------------------------------------------------------------------------------
+-- STORED PROCEDURE inserisci_nota_revisore
+---------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS inserisci_nota_revisore;
+
+DELIMITER //
+
+CREATE PROCEDURE inserisci_nota_revisore(
+    IN p_revisore_id INT,
+    IN p_riga_bilancio_id INT,
+    IN p_testo_nota TEXT
+)
+BEGIN
+    -- 1. Controllo permessi revisore 
+    IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Operazione riservata ai revisori.';
+    END IF;
+
+    -- 2. Verifica che il revisore sia effettivamente assegnato a valutare quel bilancio 
+    -- (Nota: la riga appartiene a un bilancio che deve essere associato al revisore in 'valuta')
+    IF NOT EXISTS (
+        SELECT 1 FROM valuta v
+        JOIN riga_bilancio rb ON v.id_bilancio = rb.id_bilancio
+        WHERE v.id_revisore = p_revisore_id AND rb.id = p_riga_bilancio_id
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Non sei assegnato alla revisione di questo bilancio.';
+    END IF;
+
+    -- 3. Inserimento della nota 
+    INSERT INTO nota (testo, data, id_revisore, id_riga_bilancio)
+    VALUES (p_testo_nota, CURRENT_DATE, p_revisore_id, p_riga_bilancio_id);
+END //
+
+DELIMITER ;
+
+---------------------------------------------------------------------------------------
+-- STORED PROCEDURE inserisci_giudizio_bilancio
+---------------------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS inserisci_giudizio_bilancio;
+
+DELIMITER //
+
+-- 
+
+CREATE PROCEDURE inserisci_giudizio_bilancio(
+    IN p_revisore_id INT,
+    IN p_bilancio_id INT,
+    IN p_esito VARCHAR(30),
+    IN p_rilievi TEXT
+)
+BEGIN
+    -- 1. Controllo permessi revisore 
+    IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Accesso negato.';
+    END IF;
+
+    -- 2. Verifica assegnazione del revisore al bilancio
+    IF NOT EXISTS (SELECT 1 FROM valuta WHERE id_revisore = p_revisore_id AND id_bilancio = p_bilancio_id) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Revisore non autorizzato per questo bilancio.';
+    END IF;
+
+    -- 3. Controllo validita esito
+    IF p_esito NOT IN ('approvazione', 'approvazione_con_rilievi', 'respingimento') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: esito non valido.';
+    END IF;
+
+    -- eventualmente da togliere (poi sistemare i numeri)
+    -- 4. Controllo: il revisore non deve aver gia inserito un giudizio per quel bilancio
+    IF EXISTS (
+        SELECT 1
+        FROM giudizio
+        WHERE id_revisore = p_revisore_id
+          AND id_bilancio = p_bilancio_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: hai gia inserito un giudizio per questo bilancio.';
+    END IF;
+
+    -- 5. Inserimento del giudizio 
+    INSERT INTO giudizio (esito, data, rilievi, id_revisore, id_bilancio)
+    VALUES (p_esito, CURRENT_DATE, p_rilievi, p_revisore_id, p_bilancio_id);
+    
+    -- Nota: qui scatterà il TRIGGER che valuterà se tutti i revisori hanno votato 
+END //
+
+DELIMITER ;
