@@ -95,7 +95,7 @@ CREATE TABLE bilancio (
 DROP TABLE IF EXISTS voce_template;
 CREATE TABLE voce_template (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    nome_voce VARCHAR(100) UNIQUE NOT NULL, -- es. "Ricavi vendite"
+    nome_voce VARCHAR(100) UNIQUE NOT NULL, 
     descrizione TEXT
 );
 
