@@ -71,7 +71,7 @@ CREATE TABLE possiede_competenza (
 DROP TABLE IF EXISTS azienda;
 CREATE TABLE azienda (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    nome VARCHAR(100),
+    nome VARCHAR(100) NOT NULL,
     ragione_sociale VARCHAR(100) UNIQUE NOT NULL,
     partita_iva VARCHAR(20) UNIQUE NOT NULL,
     settore VARCHAR(100),
