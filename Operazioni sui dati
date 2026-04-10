@@ -17,6 +17,11 @@ CREATE PROCEDURE registra_utente(
 BEGIN
     DECLARE v_utente_id INT;
 
+    IF p_ruolo NOT IN ('amministratore', 'revisore', 'responsabile') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: ruolo non valido.';
+    END IF;
+
     -- 1. VALIDAZIONE PASSWORD
     -- Controllo lunghezza minima (8 caratteri)
     IF CHAR_LENGTH(p_password) < 8 THEN
@@ -125,52 +130,67 @@ DELIMITER ;
 
 ------------------------------------------------------------------------------ stored procedure inserimento_indicatore_esg ----------------------------------------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS inserisci_indicatore_esg;
-
 DELIMITER //
-
--- se p_tipo = ambientale, bisogna valorizzare p_codice_normativa
--- se p_tipo = sociale, bisogna valorizzare p_ambito_sociale e p_frequenza
--- manca controllo esplicito per p_rivelanza tra 0 e 10 (probabilmente fatto)
--- vincolo NOME UNIVOCO deve esserci a livello di schema (probabilmente fatto)
 
 CREATE PROCEDURE inserisci_indicatore_esg(
     IN p_admin_id INT,
     IN p_nome VARCHAR(100),
     IN p_immagine VARCHAR(255),
     IN p_rilevanza INT,
-    IN p_tipo ENUM('generico', 'ambientale', 'sociale'),
-    -- Campi per Ambientale
+    IN p_tipo VARCHAR(20),
     IN p_codice_normativa VARCHAR(50),
-    -- Campi per Sociale
     IN p_ambito_sociale VARCHAR(100),
     IN p_frequenza VARCHAR(50)
 )
 BEGIN
     DECLARE v_indicatore_id INT;
 
-    -- Controllo se l'utente è un amministratore 
-    IF NOT EXISTS (SELECT 1 FROM amministratore WHERE utente_id = p_admin_id) THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo gli amministratori possono eseguire questa operazione.';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM amministratore
+        WHERE utente_id = p_admin_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Solo gli amministratori possono eseguire questa operazione.';
     END IF;
 
-    -- Inserimento indicatore base 
+    IF p_tipo NOT IN ('generico', 'ambientale', 'sociale') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: tipo indicatore non valido.';
+    END IF;
+
+    IF p_rilevanza NOT BETWEEN 0 AND 10 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: rilevanza non valida.';
+    END IF;
+
     INSERT INTO indicatore_esg (nome, immagine, rilevanza)
     VALUES (p_nome, p_immagine, p_rilevanza);
-    
+
     SET v_indicatore_id = LAST_INSERT_ID();
 
-    -- Specializzazione 
     IF p_tipo = 'ambientale' THEN
-        INSERT INTO indicatore_ambientale (id_indicatore, codice_normativa) 
+        IF p_codice_normativa IS NULL OR TRIM(p_codice_normativa) = '' THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Errore: codice normativa obbligatorio per indicatore ambientale.';
+        END IF;
+
+        INSERT INTO indicatore_ambientale (id_indicatore, codice_normativa)
         VALUES (v_indicatore_id, p_codice_normativa);
+
     ELSEIF p_tipo = 'sociale' THEN
-        INSERT INTO indicatore_sociale (id_indicatore, ambito_sociale, frequenza_rilevazione) 
+        IF p_ambito_sociale IS NULL OR TRIM(p_ambito_sociale) = ''
+           OR p_frequenza IS NULL OR TRIM(p_frequenza) = '' THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Errore: ambito sociale e frequenza obbligatori per indicatore sociale.';
+        END IF;
+
+        INSERT INTO indicatore_sociale (id_indicatore, ambito_sociale, frequenza_rilevazione)
         VALUES (v_indicatore_id, p_ambito_sociale, p_frequenza);
     END IF;
 END //
 
 DELIMITER ;
-
 -----------------------------------------------------------------------------------  stored procedure crea_voce_template -------------------------------------------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS crea_voce_template;
 
@@ -214,6 +234,19 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: L\'utente selezionato non è un revisore ESG.';
     END IF;
 
+
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM bilancio
+        WHERE id = p_bilancio_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Bilancio non esistente.';
+    END IF;
+
+
+
     -- 3. Inserimento dell'associazione 
     -- NOTA: Questo inserimento attiverà il trigger per cambiare lo stato in 'in revisione' 
     INSERT INTO valuta (id_revisore, id_bilancio)
@@ -226,10 +259,7 @@ DELIMITER ;
 -- STORED PROCEDURE aggiungi_competenza_revisore
 ---------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS aggiungi_competenza_revisore;
-
 DELIMITER //
-
--- aggiungere IF p_livello NOT BETWEEN 0 AND 5 THEN SIGNAL ...
 
 CREATE PROCEDURE aggiungi_competenza_revisore(
     IN p_revisore_id INT,
@@ -239,20 +269,32 @@ CREATE PROCEDURE aggiungi_competenza_revisore(
 BEGIN
     DECLARE v_competenza_id INT;
 
-    -- 1. Controllo se l'utente è un revisore ESG
-    IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo i revisori ESG possono inserire competenze.';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM revisore_esg
+        WHERE utente_id = p_revisore_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Solo i revisori ESG possono inserire competenze.';
     END IF;
 
-    -- 2. Recupero o creazione della competenza nella tabella 'competenza' 
-    SELECT id INTO v_competenza_id FROM competenza WHERE nome = p_nome_competenza;
-    
+    IF p_livello NOT BETWEEN 0 AND 5 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: livello competenza non valido.';
+    END IF;
+
+    SELECT id
+    INTO v_competenza_id
+    FROM competenza
+    WHERE nome = p_nome_competenza;
+
     IF v_competenza_id IS NULL THEN
-        INSERT INTO competenza (nome) VALUES (p_nome_competenza);
+        INSERT INTO competenza (nome)
+        VALUES (p_nome_competenza);
+
         SET v_competenza_id = LAST_INSERT_ID();
     END IF;
 
-    -- 3. Inserimento o aggiornamento del livello di possesso 
     INSERT INTO possiede_competenza (revisore_id, competenza_id, livello)
     VALUES (p_revisore_id, v_competenza_id, p_livello)
     ON DUPLICATE KEY UPDATE livello = p_livello;
@@ -355,8 +397,6 @@ DROP PROCEDURE IF EXISTS registra_azienda;
 
 DELIMITER //
 
--- in TABLE azienda mettere NOME NOT NULL 
-
 CREATE PROCEDURE registra_azienda(
     IN p_responsabile_id INT,
     IN p_nome VARCHAR(100),
@@ -370,6 +410,16 @@ BEGIN
     -- Verifica che l'utente sia un responsabile aziendale 
     IF NOT EXISTS (SELECT 1 FROM responsabile_aziendale WHERE utente_id = p_responsabile_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo un responsabile aziendale può registrare aziende.';
+    END IF;
+
+    IF p_nome IS NULL OR TRIM(p_nome) = '' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: il nome dell''azienda non può essere vuoto.';
+    END IF;
+
+    IF p_num_dipendenti IS NOT NULL AND p_num_dipendenti < 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: il numero di dipendenti non può essere negativo.';
     END IF;
 
     INSERT INTO azienda (nome, ragione_sociale, partita_iva, settore, num_dipendenti, logo, id_responsabile, nr_bilanci)
@@ -421,6 +471,33 @@ END //
 
 DELIMITER ;
 
+DROP PROCEDURE IF EXISTS aggiorna_valore_riga_bilancio;
+DELIMITER //
+
+CREATE PROCEDURE aggiorna_valore_riga_bilancio(
+    IN p_responsabile_id INT,
+    IN p_riga_bilancio_id INT,
+    IN p_valore DECIMAL(15,2)
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM riga_bilancio rb
+        JOIN bilancio b ON rb.id_bilancio = b.id
+        JOIN azienda a ON b.azienda_id = a.id
+        WHERE rb.id = p_riga_bilancio_id
+          AND a.id_responsabile = p_responsabile_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Non autorizzato a modificare questa riga.';
+    END IF;
+
+    UPDATE riga_bilancio
+    SET valore_numerico = p_valore
+    WHERE id = p_riga_bilancio_id;
+END //
+
+DELIMITER ;
 ---------------------------------------------------------------------------------------
 -- STORED PROCEDURE inserisci_valore_esg_voce
 ---------------------------------------------------------------------------------------
