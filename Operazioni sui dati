@@ -1,4 +1,3 @@
---------------------------------------------------------------------------------------- REGISTRAZIONE UTENTE STORED PROCEDURE --------------------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS registra_utente;
 
 DELIMITER //
@@ -22,7 +21,7 @@ BEGIN
         SET MESSAGE_TEXT = 'Errore: ruolo non valido.';
     END IF;
 
-    -- 1. VALIDAZIONE PASSWORD
+    -- VALIDAZIONE PASSWORD
     -- Controllo lunghezza minima (8 caratteri)
     IF CHAR_LENGTH(p_password) < 8 THEN
         SIGNAL SQLSTATE '45000'
@@ -35,23 +34,23 @@ BEGIN
         SET MESSAGE_TEXT = 'Errore: La password deve contenere almeno un carattere speciale.';
     END IF;
 
-    -- 2. VALIDAZIONE EMAIL (Univocità globale)
+    -- VALIDAZIONE EMAIL (Univocità globale)
     IF EXISTS (SELECT 1 FROM email WHERE indirizzo = p_email_principale) THEN
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'Errore: Questo indirizzo email è già associato a un altro utente.';
     END IF;
 
-    -- 3. INSERIMENTO NELLA TABELLA PADRE 'utente' 
+    -- INSERIMENTO NELLA TABELLA PADRE 'utente' 
     INSERT INTO utente (username, password, cf, data_nascita, luogo_nascita, ruolo)
     VALUES (p_username, p_password, p_cf, p_data_nascita, p_luogo_nascita, p_ruolo);
     
     SET v_utente_id = LAST_INSERT_ID();
 
-    -- 4. INSERIMENTO RECAPITO EMAIL 
+    -- INSERIMENTO RECAPITO EMAIL 
     INSERT INTO email (indirizzo, utente_id)
     VALUES (p_email_principale, v_utente_id);
 
-    -- 5. INSERIMENTO NELLA SOTTOCLASSE SPECIFICA 
+    -- INSERIMENTO NELLA SOTTOCLASSE SPECIFICA 
     CASE p_ruolo
         WHEN 'amministratore' THEN
             INSERT INTO amministratore (utente_id) 
@@ -73,7 +72,7 @@ END //
 
 DELIMITER ;
 
------------------------------------------------------------------------------------------ LOGIN UTENTE STORED PROCEDURE -----------------------------------------------------------------------------------------
+
 DROP PROCEDURE IF EXISTS login_utente;
 
 DELIMITER //
@@ -98,7 +97,7 @@ DELIMITER ;
 -- AGGIUNGI EMAIL STORED PROCEDURE --
 DELIMITER //
 
------------------------------------------------------------------------------------ STORED PROCEDURE aggiungi_email ---------------------------------------------------------------------------------------------------
+
 DROP PROCEDURE IF EXISTS aggiungi_email;
 
 DELIMITER //
@@ -128,7 +127,7 @@ END //
 
 DELIMITER ;
 
------------------------------------------------------------------------------- stored procedure inserimento_indicatore_esg ----------------------------------------------------------------------------------------------------------------------
+
 DROP PROCEDURE IF EXISTS inserisci_indicatore_esg;
 DELIMITER //
 
@@ -191,7 +190,8 @@ BEGIN
 END //
 
 DELIMITER ;
------------------------------------------------------------------------------------  stored procedure crea_voce_template -------------------------------------------------------------------------------------------------------------------------
+
+
 DROP PROCEDURE IF EXISTS crea_voce_template;
 
 DELIMITER //
@@ -213,7 +213,7 @@ END //
 
 DELIMITER ;
 
--------------------------------------------------------------------------------------- stored procedure assegna_revisore_a_bilancio -------------------------------------------------------------------------
+
 DROP PROCEDURE IF EXISTS assegna_revisore_a_bilancio;
 
 DELIMITER //
@@ -224,12 +224,12 @@ CREATE PROCEDURE assegna_revisore_a_bilancio(
     IN p_bilancio_id INT
 )
 BEGIN
-    -- 1. Controllo permessi amministratore 
+    -- Controllo permessi amministratore 
     IF NOT EXISTS (SELECT 1 FROM amministratore WHERE utente_id = p_admin_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Operazione riservata agli amministratori.';
     END IF;
 
-    -- 2. Verifica che il revisore esista effettivamente 
+    -- Verifica che il revisore esista effettivamente 
     IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: L\'utente selezionato non è un revisore ESG.';
     END IF;
@@ -247,7 +247,7 @@ BEGIN
 
 
 
-    -- 3. Inserimento dell'associazione 
+    -- Inserimento dell'associazione 
     -- NOTA: Questo inserimento attiverà il trigger per cambiare lo stato in 'in revisione' 
     INSERT INTO valuta (id_revisore, id_bilancio)
     VALUES (p_revisore_id, p_bilancio_id);
@@ -255,9 +255,8 @@ END //
 
 DELIMITER ;
 
----------------------------------------------------------------------------------------
+
 -- STORED PROCEDURE aggiungi_competenza_revisore
----------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS aggiungi_competenza_revisore;
 DELIMITER //
 
@@ -302,9 +301,8 @@ END //
 
 DELIMITER ;
 
----------------------------------------------------------------------------------------
+
 -- STORED PROCEDURE inserisci_nota_revisore
----------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS inserisci_nota_revisore;
 
 DELIMITER //
@@ -315,12 +313,12 @@ CREATE PROCEDURE inserisci_nota_revisore(
     IN p_testo_nota TEXT
 )
 BEGIN
-    -- 1. Controllo permessi revisore 
+    -- Controllo permessi revisore 
     IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Operazione riservata ai revisori.';
     END IF;
 
-    -- 2. Verifica che il revisore sia effettivamente assegnato a valutare quel bilancio 
+    -- Verifica che il revisore sia effettivamente assegnato a valutare quel bilancio 
     -- (Nota: la riga appartiene a un bilancio che deve essere associato al revisore in 'valuta')
     IF NOT EXISTS (
         SELECT 1 FROM valuta v
@@ -330,16 +328,14 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Non sei assegnato alla revisione di questo bilancio.';
     END IF;
 
-    -- 3. Inserimento della nota 
+    -- Inserimento della nota 
     INSERT INTO nota (testo, data, id_revisore, id_riga_bilancio)
     VALUES (p_testo_nota, CURRENT_DATE, p_revisore_id, p_riga_bilancio_id);
 END //
 
 DELIMITER ;
 
----------------------------------------------------------------------------------------
 -- STORED PROCEDURE inserisci_giudizio_bilancio
----------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS inserisci_giudizio_bilancio;
 
 DELIMITER //
@@ -353,24 +349,24 @@ CREATE PROCEDURE inserisci_giudizio_bilancio(
     IN p_rilievi TEXT
 )
 BEGIN
-    -- 1. Controllo permessi revisore 
+    -- Controllo permessi revisore 
     IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Accesso negato.';
     END IF;
 
-    -- 2. Verifica assegnazione del revisore al bilancio
+    -- Verifica assegnazione del revisore al bilancio
     IF NOT EXISTS (SELECT 1 FROM valuta WHERE id_revisore = p_revisore_id AND id_bilancio = p_bilancio_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Revisore non autorizzato per questo bilancio.';
     END IF;
 
-    -- 3. Controllo validita esito
+    -- Controllo validita esito
     IF p_esito NOT IN ('approvazione', 'approvazione_con_rilievi', 'respingimento') THEN
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'Errore: esito non valido.';
     END IF;
 
     -- eventualmente da togliere (poi sistemare i numeri)
-    -- 4. Controllo: il revisore non deve aver gia inserito un giudizio per quel bilancio
+    -- Controllo: il revisore non deve aver gia inserito un giudizio per quel bilancio
     IF EXISTS (
         SELECT 1
         FROM giudizio
@@ -381,7 +377,7 @@ BEGIN
         SET MESSAGE_TEXT = 'Errore: hai gia inserito un giudizio per questo bilancio.';
     END IF;
 
-    -- 5. Inserimento del giudizio 
+    -- Inserimento del giudizio 
     INSERT INTO giudizio (esito, data, rilievi, id_revisore, id_bilancio)
     VALUES (p_esito, CURRENT_DATE, p_rilievi, p_revisore_id, p_bilancio_id);
     
@@ -390,9 +386,7 @@ END //
 
 DELIMITER ;
 
----------------------------------------------------------------------------------------
 -- STORED PROCEDURE registra_azienda
----------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS registra_azienda;
 
 DELIMITER //
@@ -429,15 +423,8 @@ END //
 DELIMITER ;
 
 
--- eventuale controllo
-IF p_nome IS NULL OR TRIM(p_nome) = '' THEN
-    SIGNAL SQLSTATE '45000'
-    SET MESSAGE_TEXT = 'Errore: il nome dell''azienda non può essere vuoto.';
-END IF;
 
----------------------------------------------------------------------------------------
 -- STORED PROCEDURE crea_e_popola_bilancio
----------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS crea_e_popola_bilancio;
 
 DELIMITER //
@@ -448,19 +435,19 @@ CREATE PROCEDURE crea_e_popola_bilancio(
     OUT p_nuovo_bilancio_id INT
 )
 BEGIN
-    -- 1. Verifica che l'azienda appartenga al responsabile 
+    -- Verifica che l'azienda appartenga al responsabile 
     IF NOT EXISTS (SELECT 1 FROM azienda WHERE id = p_azienda_id AND id_responsabile = p_responsabile_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Azienda non trovata o non associata a questo responsabile.';
     END IF;
 
-    -- 2. Creazione della testata del bilancio (stato di default 'bozza') 
+    -- Creazione della testata del bilancio (stato di default 'bozza') 
 
     INSERT INTO bilancio (data_creazione, stato, azienda_id)
     VALUES (CURRENT_DATE, 'bozza', p_azienda_id);
     
     SET p_nuovo_bilancio_id = LAST_INSERT_ID();
 
-    -- 3. Popolamento automatico delle righe usando il template 
+    -- Popolamento automatico delle righe usando il template 
     -- Inizializziamo i valori numerici a 0.00
     INSERT INTO riga_bilancio (valore_numerico, id_bilancio, id_voce_template)
     SELECT 0.00, p_nuovo_bilancio_id, id FROM voce_template;
@@ -498,9 +485,8 @@ BEGIN
 END //
 
 DELIMITER ;
----------------------------------------------------------------------------------------
+
 -- STORED PROCEDURE inserisci_valore_esg_voce
----------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS inserisci_valore_esg_voce;
 
 DELIMITER //
@@ -513,7 +499,7 @@ CREATE PROCEDURE inserisci_valore_esg_voce(
     IN p_fonte VARCHAR(255)
 )
 BEGIN
-    -- 1. Verifica permessi: il responsabile deve possedere l'azienda di quel bilancio
+    -- Verifica permessi: il responsabile deve possedere l'azienda di quel bilancio
     IF NOT EXISTS (
         SELECT 1 FROM riga_bilancio rb
         JOIN bilancio b ON rb.id_bilancio = b.id
@@ -523,13 +509,13 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Non autorizzato a modificare questo bilancio.';
     END IF;
 
-    -- 2. Verifica che la fonte non sia nulla o vuota
+    -- Verifica che la fonte non sia nulla o vuota
     IF p_fonte IS NULL OR TRIM(p_fonte) = '' THEN
         SIGNAL SQLSTATE '45000'
         SET MESSAGE_TEXT = 'Errore: La fonte deve essere specificata.';
     END IF;
 
-    -- 3. Inserimento o aggiornamento del valore dell'indicatore
+    -- Inserimento o aggiornamento del valore dell'indicatore
     INSERT INTO misura_con (id_riga_bilancio, id_indicatore_esg, valore_indicatore, fonte, data_rilevazione)
     VALUES (p_riga_bilancio_id, p_indicatore_id, p_valore_esg, p_fonte, CURRENT_DATE)
     ON DUPLICATE KEY UPDATE 
@@ -540,17 +526,16 @@ END //
 
 DELIMITER ;
 
----------------------------------------------------------------------------------------
--- CALL per il popolamento --
----------------------------------------------------------------------------------------
 
--- 1. Registrazione Amministratore (ID 1)
+-- CALL per il popolamento --
+
+-- Registrazione Amministratore (ID 1)
 CALL registra_utente('admin_luca', 'Admin_Pass!2026', 'LUCADM80A01F205X', '1980-01-01', 'Bologna', 'amministratore', 'admin@esg.it', NULL);
 
--- 2. Registrazione Revisore ESG (ID 2)
+-- Registrazione Revisore ESG (ID 2)
 CALL registra_utente('revisore_marco', 'Marco_Rev#2026', 'MRCRVS85B10H501U', '1985-05-15', 'Roma', 'revisore', 'marco@revisori.it', NULL);
 
--- 3. Registrazione Responsabile Aziendale (ID 3)
+-- Registrazione Responsabile Aziendale (ID 3)
 CALL registra_utente('resp_anna', 'Anna_Azienda!26', 'NNARSP90C20L219Z', '1990-10-20', 'Milano', 'responsabile', 'anna@techgreen.it', 'cv_anna_esg.pdf');
 
 
