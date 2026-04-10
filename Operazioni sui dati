@@ -17,6 +17,11 @@ CREATE PROCEDURE registra_utente(
 BEGIN
     DECLARE v_utente_id INT;
 
+    IF p_ruolo NOT IN ('amministratore', 'revisore', 'responsabile') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: ruolo non valido.';
+    END IF;
+
     -- 1. VALIDAZIONE PASSWORD
     -- Controllo lunghezza minima (8 caratteri)
     IF CHAR_LENGTH(p_password) < 8 THEN
@@ -125,52 +130,67 @@ DELIMITER ;
 
 ------------------------------------------------------------------------------ stored procedure inserimento_indicatore_esg ----------------------------------------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS inserisci_indicatore_esg;
-
 DELIMITER //
-
--- se p_tipo = ambientale, bisogna valorizzare p_codice_normativa
--- se p_tipo = sociale, bisogna valorizzare p_ambito_sociale e p_frequenza
--- manca controllo esplicito per p_rivelanza tra 0 e 10 (probabilmente fatto)
--- vincolo NOME UNIVOCO deve esserci a livello di schema (probabilmente fatto)
 
 CREATE PROCEDURE inserisci_indicatore_esg(
     IN p_admin_id INT,
     IN p_nome VARCHAR(100),
     IN p_immagine VARCHAR(255),
     IN p_rilevanza INT,
-    IN p_tipo ENUM('generico', 'ambientale', 'sociale'),
-    -- Campi per Ambientale
+    IN p_tipo VARCHAR(20),
     IN p_codice_normativa VARCHAR(50),
-    -- Campi per Sociale
     IN p_ambito_sociale VARCHAR(100),
     IN p_frequenza VARCHAR(50)
 )
 BEGIN
     DECLARE v_indicatore_id INT;
 
-    -- Controllo se l'utente è un amministratore 
-    IF NOT EXISTS (SELECT 1 FROM amministratore WHERE utente_id = p_admin_id) THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo gli amministratori possono eseguire questa operazione.';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM amministratore
+        WHERE utente_id = p_admin_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Solo gli amministratori possono eseguire questa operazione.';
     END IF;
 
-    -- Inserimento indicatore base 
+    IF p_tipo NOT IN ('generico', 'ambientale', 'sociale') THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: tipo indicatore non valido.';
+    END IF;
+
+    IF p_rilevanza NOT BETWEEN 0 AND 10 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: rilevanza non valida.';
+    END IF;
+
     INSERT INTO indicatore_esg (nome, immagine, rilevanza)
     VALUES (p_nome, p_immagine, p_rilevanza);
-    
+
     SET v_indicatore_id = LAST_INSERT_ID();
 
-    -- Specializzazione 
     IF p_tipo = 'ambientale' THEN
-        INSERT INTO indicatore_ambientale (id_indicatore, codice_normativa) 
+        IF p_codice_normativa IS NULL OR TRIM(p_codice_normativa) = '' THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Errore: codice normativa obbligatorio per indicatore ambientale.';
+        END IF;
+
+        INSERT INTO indicatore_ambientale (id_indicatore, codice_normativa)
         VALUES (v_indicatore_id, p_codice_normativa);
+
     ELSEIF p_tipo = 'sociale' THEN
-        INSERT INTO indicatore_sociale (id_indicatore, ambito_sociale, frequenza_rilevazione) 
+        IF p_ambito_sociale IS NULL OR TRIM(p_ambito_sociale) = ''
+           OR p_frequenza IS NULL OR TRIM(p_frequenza) = '' THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Errore: ambito sociale e frequenza obbligatori per indicatore sociale.';
+        END IF;
+
+        INSERT INTO indicatore_sociale (id_indicatore, ambito_sociale, frequenza_rilevazione)
         VALUES (v_indicatore_id, p_ambito_sociale, p_frequenza);
     END IF;
 END //
 
 DELIMITER ;
-
 -----------------------------------------------------------------------------------  stored procedure crea_voce_template -------------------------------------------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS crea_voce_template;
 
@@ -214,6 +234,19 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: L\'utente selezionato non è un revisore ESG.';
     END IF;
 
+
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM bilancio
+        WHERE id = p_bilancio_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Bilancio non esistente.';
+    END IF;
+
+
+
     -- 3. Inserimento dell'associazione 
     -- NOTA: Questo inserimento attiverà il trigger per cambiare lo stato in 'in revisione' 
     INSERT INTO valuta (id_revisore, id_bilancio)
@@ -226,10 +259,7 @@ DELIMITER ;
 -- STORED PROCEDURE aggiungi_competenza_revisore
 ---------------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS aggiungi_competenza_revisore;
-
 DELIMITER //
-
--- aggiungere IF p_livello NOT BETWEEN 0 AND 5 THEN SIGNAL ...
 
 CREATE PROCEDURE aggiungi_competenza_revisore(
     IN p_revisore_id INT,
@@ -239,20 +269,32 @@ CREATE PROCEDURE aggiungi_competenza_revisore(
 BEGIN
     DECLARE v_competenza_id INT;
 
-    -- 1. Controllo se l'utente è un revisore ESG
-    IF NOT EXISTS (SELECT 1 FROM revisore_esg WHERE utente_id = p_revisore_id) THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo i revisori ESG possono inserire competenze.';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM revisore_esg
+        WHERE utente_id = p_revisore_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Solo i revisori ESG possono inserire competenze.';
     END IF;
 
-    -- 2. Recupero o creazione della competenza nella tabella 'competenza' 
-    SELECT id INTO v_competenza_id FROM competenza WHERE nome = p_nome_competenza;
-    
+    IF p_livello NOT BETWEEN 0 AND 5 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: livello competenza non valido.';
+    END IF;
+
+    SELECT id
+    INTO v_competenza_id
+    FROM competenza
+    WHERE nome = p_nome_competenza;
+
     IF v_competenza_id IS NULL THEN
-        INSERT INTO competenza (nome) VALUES (p_nome_competenza);
+        INSERT INTO competenza (nome)
+        VALUES (p_nome_competenza);
+
         SET v_competenza_id = LAST_INSERT_ID();
     END IF;
 
-    -- 3. Inserimento o aggiornamento del livello di possesso 
     INSERT INTO possiede_competenza (revisore_id, competenza_id, livello)
     VALUES (p_revisore_id, v_competenza_id, p_livello)
     ON DUPLICATE KEY UPDATE livello = p_livello;
@@ -355,8 +397,6 @@ DROP PROCEDURE IF EXISTS registra_azienda;
 
 DELIMITER //
 
--- in TABLE azienda mettere NOME NOT NULL 
-
 CREATE PROCEDURE registra_azienda(
     IN p_responsabile_id INT,
     IN p_nome VARCHAR(100),
@@ -370,6 +410,16 @@ BEGIN
     -- Verifica che l'utente sia un responsabile aziendale 
     IF NOT EXISTS (SELECT 1 FROM responsabile_aziendale WHERE utente_id = p_responsabile_id) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: Solo un responsabile aziendale può registrare aziende.';
+    END IF;
+
+    IF p_nome IS NULL OR TRIM(p_nome) = '' THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: il nome dell''azienda non può essere vuoto.';
+    END IF;
+
+    IF p_num_dipendenti IS NOT NULL AND p_num_dipendenti < 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: il numero di dipendenti non può essere negativo.';
     END IF;
 
     INSERT INTO azienda (nome, ragione_sociale, partita_iva, settore, num_dipendenti, logo, id_responsabile, nr_bilanci)
@@ -421,6 +471,33 @@ END //
 
 DELIMITER ;
 
+DROP PROCEDURE IF EXISTS aggiorna_valore_riga_bilancio;
+DELIMITER //
+
+CREATE PROCEDURE aggiorna_valore_riga_bilancio(
+    IN p_responsabile_id INT,
+    IN p_riga_bilancio_id INT,
+    IN p_valore DECIMAL(15,2)
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM riga_bilancio rb
+        JOIN bilancio b ON rb.id_bilancio = b.id
+        JOIN azienda a ON b.azienda_id = a.id
+        WHERE rb.id = p_riga_bilancio_id
+          AND a.id_responsabile = p_responsabile_id
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Errore: Non autorizzato a modificare questa riga.';
+    END IF;
+
+    UPDATE riga_bilancio
+    SET valore_numerico = p_valore
+    WHERE id = p_riga_bilancio_id;
+END //
+
+DELIMITER ;
 ---------------------------------------------------------------------------------------
 -- STORED PROCEDURE inserisci_valore_esg_voce
 ---------------------------------------------------------------------------------------
@@ -462,3 +539,59 @@ BEGIN
 END //
 
 DELIMITER ;
+
+---------------------------------------------------------------------------------------
+-- CALL per il popolamento --
+---------------------------------------------------------------------------------------
+
+-- 1. Registrazione Amministratore (ID 1)
+CALL registra_utente('admin_luca', 'Admin_Pass!2026', 'LUCADM80A01F205X', '1980-01-01', 'Bologna', 'amministratore', 'admin@esg.it', NULL);
+
+-- 2. Registrazione Revisore ESG (ID 2)
+CALL registra_utente('revisore_marco', 'Marco_Rev#2026', 'MRCRVS85B10H501U', '1985-05-15', 'Roma', 'revisore', 'marco@revisori.it', NULL);
+
+-- 3. Registrazione Responsabile Aziendale (ID 3)
+CALL registra_utente('resp_anna', 'Anna_Azienda!26', 'NNARSP90C20L219Z', '1990-10-20', 'Milano', 'responsabile', 'anna@techgreen.it', 'cv_anna_esg.pdf');
+
+
+-- Creazione Voci del Template
+CALL crea_voce_template(1, 'Fatturato Annuo', 'Totale dei ricavi derivanti dalle vendite');
+CALL crea_voce_template(1, 'Costi del Personale', 'Spese relative a stipendi e oneri sociali');
+CALL crea_voce_template(1, 'Consumo Energetico', 'Costo per fornitura elettrica e gas');
+
+-- Inserimento Indicatori ESG
+-- Ambientale (Richiede codice normativa)
+CALL inserisci_indicatore_esg(1, 'Emissioni CO2', 'co2.png', 9, 'ambientale', 'ISO-14064', NULL, NULL);
+-- Sociale (Richiede ambito e frequenza)
+CALL inserisci_indicatore_esg(1, 'Divario Salariale', 'wage.png', 8, 'sociale', NULL, 'Gender Equality', 'Annuale');
+-- Generico
+CALL inserisci_indicatore_esg(1, 'Etica Aziendale', 'ethics.png', 7, 'generico', NULL, NULL, NULL);
+
+
+-- Registrazione Azienda
+CALL registra_azienda(3, 'TechGreen S.p.A.', 'TechGreen S.p.A. Soluzioni', '01234567890', 'Energia', 200, 'logo_tg.png');
+
+-- Creazione Bilancio (Nasce in 'bozza' e si popola automaticamente con le 3 voci del template)
+-- Usiamo una variabile SQL per recuperare l'ID del bilancio appena creato
+CALL crea_e_popola_bilancio(3, 1, @id_bilancio);
+
+-- Popolamento dei valori finanziari (Supponendo che la voce 3 sia 'Consumo Energetico')
+CALL aggiorna_valore_riga_bilancio(3, 3, 50000.00);
+
+-- Collegamento dell'indicatore 'Emissioni CO2' (ID 1) alla voce di bilancio (ID riga 3)
+CALL inserisci_valore_esg_voce(3, 3, 1, 12.5, 'Report Sostenibilità Q4');
+
+
+-- Aggiunta competenze al revisore Marco (ID 2)
+CALL aggiungi_competenza_revisore(2, 'Analisi Carbonica', 5);
+
+-- L'admin assegna Marco alla revisione del bilancio TechGreen
+-- TEST TRIGGER: Lo stato del bilancio ID 1 passerà automaticamente a 'in revisione'
+CALL assegna_revisore_a_bilancio(1, 2, 1);
+
+-- Il revisore inserisce una nota tecnica sulla riga del consumo energetico (ID riga 3)
+CALL inserisci_nota_revisore(2, 3, 'Il valore delle emissioni è coerente con la documentazione Enel fornita.');
+
+-- Il revisore inserisce il giudizio finale
+-- TEST TRIGGER: Lo stato del bilancio ID 1 diventerà 'approvato'
+CALL inserisci_giudizio_bilancio(2, 1, 'approvazione', 'Bilancio molto accurato sul fronte energetico.');
