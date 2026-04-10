@@ -539,3 +539,59 @@ BEGIN
 END //
 
 DELIMITER ;
+
+---------------------------------------------------------------------------------------
+-- CALL per il popolamento --
+---------------------------------------------------------------------------------------
+
+-- 1. Registrazione Amministratore (ID 1)
+CALL registra_utente('admin_luca', 'Admin_Pass!2026', 'LUCADM80A01F205X', '1980-01-01', 'Bologna', 'amministratore', 'admin@esg.it', NULL);
+
+-- 2. Registrazione Revisore ESG (ID 2)
+CALL registra_utente('revisore_marco', 'Marco_Rev#2026', 'MRCRVS85B10H501U', '1985-05-15', 'Roma', 'revisore', 'marco@revisori.it', NULL);
+
+-- 3. Registrazione Responsabile Aziendale (ID 3)
+CALL registra_utente('resp_anna', 'Anna_Azienda!26', 'NNARSP90C20L219Z', '1990-10-20', 'Milano', 'responsabile', 'anna@techgreen.it', 'cv_anna_esg.pdf');
+
+
+-- Creazione Voci del Template
+CALL crea_voce_template(1, 'Fatturato Annuo', 'Totale dei ricavi derivanti dalle vendite');
+CALL crea_voce_template(1, 'Costi del Personale', 'Spese relative a stipendi e oneri sociali');
+CALL crea_voce_template(1, 'Consumo Energetico', 'Costo per fornitura elettrica e gas');
+
+-- Inserimento Indicatori ESG
+-- Ambientale (Richiede codice normativa)
+CALL inserisci_indicatore_esg(1, 'Emissioni CO2', 'co2.png', 9, 'ambientale', 'ISO-14064', NULL, NULL);
+-- Sociale (Richiede ambito e frequenza)
+CALL inserisci_indicatore_esg(1, 'Divario Salariale', 'wage.png', 8, 'sociale', NULL, 'Gender Equality', 'Annuale');
+-- Generico
+CALL inserisci_indicatore_esg(1, 'Etica Aziendale', 'ethics.png', 7, 'generico', NULL, NULL, NULL);
+
+
+-- Registrazione Azienda
+CALL registra_azienda(3, 'TechGreen S.p.A.', 'TechGreen S.p.A. Soluzioni', '01234567890', 'Energia', 200, 'logo_tg.png');
+
+-- Creazione Bilancio (Nasce in 'bozza' e si popola automaticamente con le 3 voci del template)
+-- Usiamo una variabile SQL per recuperare l'ID del bilancio appena creato
+CALL crea_e_popola_bilancio(3, 1, @id_bilancio);
+
+-- Popolamento dei valori finanziari (Supponendo che la voce 3 sia 'Consumo Energetico')
+CALL aggiorna_valore_riga_bilancio(3, 3, 50000.00);
+
+-- Collegamento dell'indicatore 'Emissioni CO2' (ID 1) alla voce di bilancio (ID riga 3)
+CALL inserisci_valore_esg_voce(3, 3, 1, 12.5, 'Report Sostenibilità Q4');
+
+
+-- Aggiunta competenze al revisore Marco (ID 2)
+CALL aggiungi_competenza_revisore(2, 'Analisi Carbonica', 5);
+
+-- L'admin assegna Marco alla revisione del bilancio TechGreen
+-- TEST TRIGGER: Lo stato del bilancio ID 1 passerà automaticamente a 'in revisione'
+CALL assegna_revisore_a_bilancio(1, 2, 1);
+
+-- Il revisore inserisce una nota tecnica sulla riga del consumo energetico (ID riga 3)
+CALL inserisci_nota_revisore(2, 3, 'Il valore delle emissioni è coerente con la documentazione Enel fornita.');
+
+-- Il revisore inserisce il giudizio finale
+-- TEST TRIGGER: Lo stato del bilancio ID 1 diventerà 'approvato'
+CALL inserisci_giudizio_bilancio(2, 1, 'approvazione', 'Bilancio molto accurato sul fronte energetico.');
