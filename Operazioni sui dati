@@ -1,7 +1,24 @@
+-- Disattivo warning
+SET sql_notes = 0;
+
 DROP PROCEDURE IF EXISTS registra_utente;
+DROP PROCEDURE IF EXISTS login_utente;
+DROP PROCEDURE IF EXISTS aggiungi_email;
+DROP PROCEDURE IF EXISTS inserisci_indicatore_esg;
+DROP PROCEDURE IF EXISTS crea_voce_template;
+DROP PROCEDURE IF EXISTS assegna_revisore_a_bilancio;
+DROP PROCEDURE IF EXISTS aggiungi_competenza_revisore;
+DROP PROCEDURE IF EXISTS inserisci_nota_revisore;
+DROP PROCEDURE IF EXISTS inserisci_giudizio_bilancio;
+DROP PROCEDURE IF EXISTS registra_azienda;
+DROP PROCEDURE IF EXISTS crea_e_popola_bilancio;
+DROP PROCEDURE IF EXISTS aggiorna_valore_riga_bilancio;
+DROP PROCEDURE IF EXISTS inserisci_valore_esg_voce;
+
+-- Riattivo warning
+SET sql_notes = 1;
 
 DELIMITER //
-
 CREATE PROCEDURE registra_utente(
     IN p_username VARCHAR(50),
     IN p_password VARCHAR(255),
@@ -69,11 +86,9 @@ BEGIN
 
     -- Nota: In un'applicazione reale, qui verrebbe generato l'evento per MongoDB
 END //
-
 DELIMITER ;
 
 
-DROP PROCEDURE IF EXISTS login_utente;
 
 DELIMITER //
 
@@ -91,14 +106,10 @@ BEGIN
     -- Se la query non restituisce righe, l'autenticazione è fallita.
     -- LOG EVENTO su MongoDB: "Tentativo di login per utente: p_username" 
 END //
-
 DELIMITER ;
 
 
 -- AGGIUNGI EMAIL STORED PROCEDURE --
-
-DROP PROCEDURE IF EXISTS aggiungi_email;
-
 DELIMITER //
 
 CREATE PROCEDURE aggiungi_email(
@@ -123,11 +134,9 @@ BEGIN
         VALUES (p_nuovo_indirizzo, p_utente_id);
     END IF;
 END //
-
 DELIMITER ;
 
 
-DROP PROCEDURE IF EXISTS inserisci_indicatore_esg;
 DELIMITER //
 
 CREATE PROCEDURE inserisci_indicatore_esg(
@@ -187,11 +196,9 @@ BEGIN
         VALUES (v_indicatore_id, p_ambito_sociale, p_frequenza);
     END IF;
 END //
-
 DELIMITER ;
 
 
-DROP PROCEDURE IF EXISTS crea_voce_template;
 
 DELIMITER //
 
@@ -209,11 +216,9 @@ BEGIN
     INSERT INTO voce_template (nome_voce, descrizione)
     VALUES (p_nome_voce, p_descrizione);
 END //
-
 DELIMITER ;
 
 
-DROP PROCEDURE IF EXISTS assegna_revisore_a_bilancio;
 
 DELIMITER //
 
@@ -233,8 +238,6 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Errore: L\'utente selezionato non è un revisore ESG.';
     END IF;
 
-
-
     IF NOT EXISTS (
         SELECT 1
         FROM bilancio
@@ -245,18 +248,15 @@ BEGIN
     END IF;
 
 
-
     -- Inserimento dell'associazione 
     -- NOTA: Questo inserimento attiverà il trigger per cambiare lo stato in 'in revisione' 
     INSERT INTO valuta (id_revisore, id_bilancio)
     VALUES (p_revisore_id, p_bilancio_id);
 END //
-
 DELIMITER ;
 
 
 -- STORED PROCEDURE aggiungi_competenza_revisore
-DROP PROCEDURE IF EXISTS aggiungi_competenza_revisore;
 DELIMITER //
 
 CREATE PROCEDURE aggiungi_competenza_revisore(
@@ -297,13 +297,10 @@ BEGIN
     VALUES (p_revisore_id, v_competenza_id, p_livello)
     ON DUPLICATE KEY UPDATE livello = p_livello;
 END //
-
 DELIMITER ;
 
 
 -- STORED PROCEDURE inserisci_nota_revisore
-DROP PROCEDURE IF EXISTS inserisci_nota_revisore;
-
 DELIMITER //
 
 CREATE PROCEDURE inserisci_nota_revisore(
@@ -331,15 +328,12 @@ BEGIN
     INSERT INTO nota (testo, data, id_revisore, id_riga_bilancio)
     VALUES (p_testo_nota, CURRENT_DATE, p_revisore_id, p_riga_bilancio_id);
 END //
-
 DELIMITER ;
 
+
+
 -- STORED PROCEDURE inserisci_giudizio_bilancio
-DROP PROCEDURE IF EXISTS inserisci_giudizio_bilancio;
-
 DELIMITER //
-
--- 
 
 CREATE PROCEDURE inserisci_giudizio_bilancio(
     IN p_revisore_id INT,
@@ -382,12 +376,10 @@ BEGIN
     
     -- Nota: qui scatterà il TRIGGER che valuterà se tutti i revisori hanno votato 
 END //
-
 DELIMITER ;
 
--- STORED PROCEDURE registra_azienda
-DROP PROCEDURE IF EXISTS registra_azienda;
 
+-- STORED PROCEDURE registra_azienda
 DELIMITER //
 
 CREATE PROCEDURE registra_azienda(
@@ -418,14 +410,11 @@ BEGIN
     INSERT INTO azienda (nome, ragione_sociale, partita_iva, settore, num_dipendenti, logo, id_responsabile, nr_bilanci)
     VALUES (p_nome, p_ragione_sociale, p_partita_iva, p_settore, p_num_dipendenti, p_logo, p_responsabile_id, 0);
 END //
-
 DELIMITER ;
 
 
 
 -- STORED PROCEDURE crea_e_popola_bilancio
-DROP PROCEDURE IF EXISTS crea_e_popola_bilancio;
-
 DELIMITER //
 
 CREATE PROCEDURE crea_e_popola_bilancio(
@@ -454,10 +443,9 @@ BEGIN
     -- Nota: L'incremento di azienda.nr_bilanci  è ideale gestirlo via TRIGGER 
     -- per tracciare anche eventuali cancellazioni.
 END //
-
 DELIMITER ;
 
-DROP PROCEDURE IF EXISTS aggiorna_valore_riga_bilancio;
+
 DELIMITER //
 
 CREATE PROCEDURE aggiorna_valore_riga_bilancio(
@@ -482,12 +470,10 @@ BEGIN
     SET valore_numerico = p_valore
     WHERE id = p_riga_bilancio_id;
 END //
-
 DELIMITER ;
 
--- STORED PROCEDURE inserisci_valore_esg_voce
-DROP PROCEDURE IF EXISTS inserisci_valore_esg_voce;
 
+-- STORED PROCEDURE inserisci_valore_esg_voce
 DELIMITER //
 
 CREATE PROCEDURE inserisci_valore_esg_voce(
@@ -522,7 +508,6 @@ BEGIN
         fonte = p_fonte, 
         data_rilevazione = CURRENT_DATE;
 END //
-
 DELIMITER ;
 
 
@@ -565,7 +550,6 @@ CALL aggiorna_valore_riga_bilancio(3, 3, 50000.00);
 -- Collegamento dell'indicatore 'Emissioni CO2' (ID 1) alla voce di bilancio (ID riga 3)
 CALL inserisci_valore_esg_voce(3, 3, 1, 12.5, 'Report Sostenibilità Q4');
 
-
 -- Aggiunta competenze al revisore Marco (ID 2)
 CALL aggiungi_competenza_revisore(2, 'Analisi Carbonica', 5);
 
@@ -580,8 +564,8 @@ CALL inserisci_nota_revisore(2, 3, 'Il valore delle emissioni è coerente con la
 -- TEST TRIGGER: Lo stato del bilancio ID 1 diventerà 'approvato'
 CALL inserisci_giudizio_bilancio(2, 1, 'approvazione', 'Bilancio molto accurato sul fronte energetico.');
 
--- STATISTICHE --
 
+-- STATISTICHE --
 -- Numero di aziende registrate in piattaforma
 SELECT COUNT(*) AS totale_aziende 
 FROM azienda;
