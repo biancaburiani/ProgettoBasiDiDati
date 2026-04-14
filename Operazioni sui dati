@@ -94,9 +94,8 @@ END //
 
 DELIMITER ;
 
--- AGGIUNGI EMAIL STORED PROCEDURE --
-DELIMITER //
 
+-- AGGIUNGI EMAIL STORED PROCEDURE --
 
 DROP PROCEDURE IF EXISTS aggiungi_email;
 
@@ -580,3 +579,41 @@ CALL inserisci_nota_revisore(2, 3, 'Il valore delle emissioni è coerente con la
 -- Il revisore inserisce il giudizio finale
 -- TEST TRIGGER: Lo stato del bilancio ID 1 diventerà 'approvato'
 CALL inserisci_giudizio_bilancio(2, 1, 'approvazione', 'Bilancio molto accurato sul fronte energetico.');
+
+-- STATISTICHE --
+
+-- Numero di aziende registrate in piattaforma
+SELECT COUNT(*) AS totale_aziende 
+FROM azienda;
+
+-- Numero di revisori ESG registrati in piattaforma
+SELECT COUNT(*) AS totale_revisori 
+FROM revisore_esg;
+
+-- Affidabilità, calcolata come (bilanci con esito di approvazione / tot. bilanci)*100
+SELECT 
+    a.nome AS azienda,
+    a.ragione_sociale,
+    (COUNT(CASE WHEN g.esito = 'approvazione' THEN 1 END) / COUNT(b.id)) * 100 AS percentuale_affidabilita
+FROM azienda a
+JOIN bilancio b ON a.id = b.azienda_id
+LEFT JOIN giudizio g ON b.id = g.id_bilancio
+GROUP BY a.id
+ORDER BY percentuale_affidabilita DESC
+LIMIT 1;
+
+-- Classifica dei bilanci aziendali, ordinati in base al numero totale di indicatori ESG connessi
+alle singole voci contabili
+
+SELECT 
+    b.id AS bilancio_id,
+    a.nome AS azienda,
+    b.data_creazione,
+    COUNT(mc.id_indicatore_esg) AS totale_indicatori_esg
+FROM bilancio b
+JOIN azienda a ON b.azienda_id = a.id
+JOIN riga_bilancio rb ON b.id = rb.id_bilancio
+LEFT JOIN misura_con mc ON rb.id = mc.id_riga_bilancio
+GROUP BY b.id
+ORDER BY totale_indicatori_esg DESC;
+
