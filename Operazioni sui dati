@@ -778,3 +778,97 @@ ORDER BY totale_indicatori_esg DESC, b.id;
 -- contando gli indicatori associati alle righe di un bilancio
 -- ottengo il totale degli indicatori ESG connessi a quel bilancio.
 
+
+
+-- =======================================================================================================
+-- TRIGGER
+-- =======================================================================================================
+
+
+-- =====================================================
+-- TRIGGER 1
+-- Quando viene assegnato un revisore a un bilancio,
+-- lo stato del bilancio diventa 'in revisione'
+-- =====================================================
+
+DROP TRIGGER IF EXISTS trg_bilancio_in_revisione;
+
+DELIMITER //
+
+CREATE TRIGGER trg_bilancio_in_revisione
+AFTER INSERT ON valuta
+FOR EACH ROW
+BEGIN
+    UPDATE bilancio
+    SET stato = 'in revisione'
+    WHERE id = NEW.id_bilancio
+      AND stato = 'bozza';
+END //
+
+DELIMITER ;
+
+
+-- =====================================================
+-- TRIGGER 2
+-- Quando viene inserito un giudizio su un bilancio:
+-- - se tutti i revisori assegnati hanno votato
+--   e almeno uno ha respinto -> stato = 'respinto'
+-- - se tutti i revisori assegnati hanno votato
+--   e tutti i giudizi sono approvazione o approvazione_con_rilievi
+--   -> stato = 'approvato'
+-- =====================================================
+
+DROP TRIGGER IF EXISTS trg_aggiorna_stato_bilancio_dopo_giudizio;
+
+DELIMITER //
+
+CREATE TRIGGER trg_aggiorna_stato_bilancio_dopo_giudizio
+AFTER INSERT ON giudizio
+FOR EACH ROW
+BEGIN
+    DECLARE v_num_revisori_assegnati INT;
+    DECLARE v_num_giudizi_inseriti INT;
+    DECLARE v_num_respingimenti INT;
+
+    -- Numero totale di revisori assegnati al bilancio
+    SELECT COUNT(*)
+    INTO v_num_revisori_assegnati
+    FROM valuta
+    WHERE id_bilancio = NEW.id_bilancio;
+
+    -- Numero totale di giudizi già inseriti per quel bilancio
+    SELECT COUNT(*)
+    INTO v_num_giudizi_inseriti
+    FROM giudizio
+    WHERE id_bilancio = NEW.id_bilancio;
+
+    -- Numero di giudizi con esito 'respingimento'
+    SELECT COUNT(*)
+    INTO v_num_respingimenti
+    FROM giudizio
+    WHERE id_bilancio = NEW.id_bilancio
+      AND esito = 'respingimento';
+
+    -- Aggiorno lo stato solo quando tutti i revisori assegnati
+    -- hanno effettivamente inserito il loro giudizio
+    IF v_num_revisori_assegnati > 0
+       AND v_num_revisori_assegnati = v_num_giudizi_inseriti THEN
+
+        -- Se almeno un revisore ha respinto, il bilancio è respinto
+        IF v_num_respingimenti > 0 THEN
+            UPDATE bilancio
+            SET stato = 'respinto'
+            WHERE id = NEW.id_bilancio;
+
+        -- Altrimenti tutti i giudizi sono approvazione
+        -- oppure approvazione_con_rilievi
+        ELSE
+            UPDATE bilancio
+            SET stato = 'approvato'
+            WHERE id = NEW.id_bilancio;
+        END IF;
+
+    END IF;
+END //
+
+DELIMITER ;
