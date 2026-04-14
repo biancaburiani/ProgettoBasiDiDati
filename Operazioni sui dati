@@ -565,39 +565,216 @@ CALL inserisci_nota_revisore(2, 3, 'Il valore delle emissioni è coerente con la
 CALL inserisci_giudizio_bilancio(2, 1, 'approvazione', 'Bilancio molto accurato sul fronte energetico.');
 
 
--- STATISTICHE --
--- Numero di aziende registrate in piattaforma
-SELECT COUNT(*) AS totale_aziende 
+-- =====================================================
+-- STATISTICHE VISIBILI A TUTTI
+-- Implementate tramite VIEW, come richiesto dalla traccia
+-- =====================================================
+
+
+-- =====================================================
+-- 1) NUMERO DI AZIENDE REGISTRATE IN PIATTAFORMA
+-- =====================================================
+
+-- Se esiste già una vista con questo nome, la elimino
+DROP VIEW IF EXISTS v_numero_aziende_registrate;
+
+-- Creo la vista che conta semplicemente quante aziende ci sono
+CREATE VIEW v_numero_aziende_registrate AS
+SELECT COUNT(*) AS totale_aziende
 FROM azienda;
 
--- Numero di revisori ESG registrati in piattaforma
-SELECT COUNT(*) AS totale_revisori 
+-- Logica:
+-- ogni riga della tabella azienda corrisponde a un'azienda registrata,
+-- quindi COUNT(*) restituisce il totale delle aziende presenti.
+
+
+
+-- =====================================================
+-- 2) NUMERO DI REVISORI ESG REGISTRATI IN PIATTAFORMA
+-- =====================================================
+
+-- Elimino la vista se già presente
+DROP VIEW IF EXISTS v_numero_revisori_registrati;
+
+-- Creo la vista che conta i revisori ESG registrati
+CREATE VIEW v_numero_revisori_registrati AS
+SELECT COUNT(*) AS totale_revisori
 FROM revisore_esg;
 
--- Affidabilità, calcolata come (bilanci con esito di approvazione / tot. bilanci)*100
-SELECT 
-    a.nome AS azienda,
+-- Logica:
+-- ogni riga della tabella revisore_esg rappresenta un revisore,
+-- quindi COUNT(*) restituisce il numero totale dei revisori.
+
+
+
+-- =====================================================
+-- 3) AZIENDA CON IL VALORE PIU' ALTO DI AFFIDABILITA'
+-- =====================================================
+
+-- Definizione di affidabilità:
+-- percentuale di bilanci approvati senza rilievi,
+-- cioè bilanci per cui:
+-- 1) esiste almeno un revisore assegnato
+-- 2) tutti i revisori assegnati hanno inserito il giudizio
+-- 3) tutti i giudizi inseriti sono 'approvazione'
+--
+-- NB: non basta contare i giudizi positivi, perché un bilancio
+-- può avere più revisori. Bisogna ragionare per bilancio.
+
+DROP VIEW IF EXISTS v_azienda_piu_affidabile;
+
+CREATE VIEW v_azienda_piu_affidabile AS
+
+-- Prima CTE:
+-- associo ogni bilancio alla sua azienda
+WITH bilanci_per_azienda AS (
+    SELECT
+        a.id AS id_azienda,
+        a.ragione_sociale,
+        b.id AS id_bilancio
+    FROM azienda a
+    JOIN bilancio b
+        ON a.id = b.azienda_id
+),
+
+-- Seconda CTE:
+-- per ogni bilancio calcolo:
+-- - quanti revisori sono stati assegnati
+-- - quanti giudizi sono stati effettivamente inseriti
+-- - quanti di questi giudizi sono 'approvazione'
+stato_bilanci AS (
+    SELECT
+        bpa.id_azienda,
+        bpa.ragione_sociale,
+        bpa.id_bilancio,
+
+        -- Numero revisori assegnati a quel bilancio
+        COUNT(DISTINCT v.id_revisore) AS num_revisori_assegnati,
+
+        -- Numero revisori che hanno effettivamente inserito un giudizio
+        COUNT(DISTINCT g.id_revisore) AS num_giudizi_inseriti,
+
+        -- Numero di giudizi con esito 'approvazione'
+        SUM(
+            CASE
+                WHEN g.esito = 'approvazione' THEN 1
+                ELSE 0
+            END
+        ) AS num_approvazioni
+
+    FROM bilanci_per_azienda bpa
+
+    -- Prendo i revisori assegnati al bilancio
+    LEFT JOIN valuta v
+        ON bpa.id_bilancio = v.id_bilancio
+
+    -- Prendo i giudizi inseriti per quel bilancio
+    LEFT JOIN giudizio g
+        ON bpa.id_bilancio = g.id_bilancio
+
+    GROUP BY
+        bpa.id_azienda,
+        bpa.ragione_sociale,
+        bpa.id_bilancio
+),
+
+-- Terza CTE:
+-- trasformo ogni bilancio in un valore binario:
+-- 1 se è "approvato senza rilievi"
+-- 0 altrimenti
+affidabilita_aziende AS (
+    SELECT
+        id_azienda,
+        ragione_sociale,
+
+        -- Calcolo la percentuale:
+        -- (numero di bilanci approvati senza rilievi / numero totale bilanci) * 100
+        ROUND(
+            SUM(
+                CASE
+                    WHEN num_revisori_assegnati > 0
+                         AND num_revisori_assegnati = num_giudizi_inseriti
+                         AND num_approvazioni = num_revisori_assegnati
+                    THEN 1
+                    ELSE 0
+                END
+            ) * 100.0 / COUNT(*),
+            2
+        ) AS percentuale_affidabilita
+
+    FROM stato_bilanci
+    GROUP BY id_azienda, ragione_sociale
+)
+
+-- Seleziono solo l'azienda o le aziende con affidabilità massima
+-- così gestisco correttamente anche eventuali parimerito
+SELECT
+    ragione_sociale,
+    percentuale_affidabilita
+FROM affidabilita_aziende
+WHERE percentuale_affidabilita = (
+    SELECT MAX(percentuale_affidabilita)
+    FROM affidabilita_aziende
+);
+
+-- Logica generale:
+-- 1) considero i bilanci azienda per azienda
+-- 2) per ogni bilancio verifico se tutti i revisori assegnati hanno votato
+-- 3) verifico se tutti i voti sono 'approvazione'
+-- 4) se sì, quel bilancio conta come bilancio affidabile
+-- 5) alla fine calcolo la percentuale per ogni azienda
+-- 6) restituisco l'azienda con la percentuale più alta
+
+
+
+-- =====================================================
+-- 4) CLASSIFICA DEI BILANCI IN BASE AL NUMERO TOTALE
+--    DI INDICATORI ESG COLLEGATI ALLE VOCI CONTABILI
+-- =====================================================
+
+DROP VIEW IF EXISTS v_classifica_bilanci_per_indicatori_esg;
+
+CREATE VIEW v_classifica_bilanci_per_indicatori_esg AS
+SELECT
+    -- ID del bilancio
+    b.id AS id_bilancio,
+
+    -- Ragione sociale dell'azienda a cui appartiene il bilancio
     a.ragione_sociale,
-    (COUNT(CASE WHEN g.esito = 'approvazione' THEN 1 END) / COUNT(b.id)) * 100 AS percentuale_affidabilita
-FROM azienda a
-JOIN bilancio b ON a.id = b.azienda_id
-LEFT JOIN giudizio g ON b.id = g.id_bilancio
-GROUP BY a.id
-ORDER BY percentuale_affidabilita DESC
-LIMIT 1;
 
--- Classifica dei bilanci aziendali, ordinati in base al numero totale di indicatori ESG connessi
-alle singole voci contabili
-
-SELECT 
-    b.id AS bilancio_id,
-    a.nome AS azienda,
+    -- Data di creazione del bilancio
     b.data_creazione,
+
+    -- Conteggio totale degli indicatori ESG associati
     COUNT(mc.id_indicatore_esg) AS totale_indicatori_esg
+
 FROM bilancio b
-JOIN azienda a ON b.azienda_id = a.id
-JOIN riga_bilancio rb ON b.id = rb.id_bilancio
-LEFT JOIN misura_con mc ON rb.id = mc.id_riga_bilancio
-GROUP BY b.id
-ORDER BY totale_indicatori_esg DESC;
+
+-- Collego ogni bilancio alla sua azienda
+JOIN azienda a
+    ON b.azienda_id = a.id
+
+-- Collego ogni bilancio alle sue righe
+JOIN riga_bilancio rb
+    ON rb.id_bilancio = b.id
+
+-- Collego ogni riga agli eventuali indicatori ESG associati
+-- Uso LEFT JOIN per includere anche bilanci che non hanno ancora indicatori
+LEFT JOIN misura_con mc
+    ON mc.id_riga_bilancio = rb.id
+
+-- Raggruppo per bilancio
+GROUP BY
+    b.id,
+    a.ragione_sociale,
+    b.data_creazione
+
+-- Ordino dal bilancio con più indicatori a quello con meno indicatori
+ORDER BY totale_indicatori_esg DESC, b.id;
+
+-- Logica:
+-- un bilancio contiene più righe di bilancio;
+-- ogni riga può avere zero, uno o più indicatori ESG associati;
+-- contando gli indicatori associati alle righe di un bilancio
+-- ottengo il totale degli indicatori ESG connessi a quel bilancio.
 
